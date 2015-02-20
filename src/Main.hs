@@ -1,7 +1,8 @@
 import System.Environment
 import System.Exit
 
-import qualified Horse.Commands as Commands
+import qualified Horse.Commands.Porcelain as Porcelain
+import qualified Horse.Commands.Plumbing as Plumbing
 
 helpText :: String
 helpText = "<insert help text here>"
@@ -13,15 +14,15 @@ parseArgs :: [String] -> IO String
 parseArgs [] = parseArgs ["-h"]
 parseArgs args =
     case head args of
-        "add"           -> (Commands.add         $ tail args ) >> exit
-        "rm"            -> (Commands.rm          $ tail args ) >> exit
-        "checkout"      -> (Commands.checkout    $ tail args ) >> exit
-        "commit"        -> (Commands.commit      $ tail args ) >> exit
-        "diff"          -> (Commands.diff        $ tail args ) >> exit
-        "init"          -> (Commands.init        $ tail args ) >> exit
-        "log"           -> (Commands.log         $ tail args ) >> exit
-        "status"        -> (Commands.status      $ tail args ) >> exit
-        "show"          -> (Commands.show        $ tail args ) >> exit
+        "add"           -> (Porcelain.add        $ tail args ) >> exit
+        "rm"            -> (Porcelain.rm         $ tail args ) >> exit
+        "checkout"      -> (Porcelain.checkout   $ tail args ) >> exit
+        "commit"        -> (Porcelain.commit     $ tail args ) >> exit
+        "diff"          -> (Porcelain.diff       $ tail args ) >> exit
+        "init"          -> (Porcelain.init       $ tail args ) >> exit
+        "log"           -> (Porcelain.log        $ tail args ) >> exit
+        "status"        -> (Porcelain.status     $ tail args ) >> exit
+        "show"          -> (Porcelain.show       $ tail args ) >> exit
         "-v"            -> (putStrLn version                 ) >> exit
         "-h"            -> (putStrLn helpText                ) >> exit
         _               -> ((putStrLn $ "Unrecognized command: "

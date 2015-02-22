@@ -22,6 +22,9 @@ import qualified System.Directory as Dir
 
 import qualified Horse.Commands.Plumbing as Plumbing
 import qualified Horse.Filesys as Filesys
+import Horse.Types
+
+import Data.Serialize
 
 import Data.ByteString as ByteString hiding (putStrLn, map)
 
@@ -31,23 +34,23 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Database.LevelDB as DB
 
 init :: [String] -> IO ()
-init args = do
+init _ = do
     rootDirAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
 
-    return $ map destructivelyCreateDirectory Filesys.directories
+    sequence $ map destructivelyCreateDirectory Filesys.directories
 
-    -- return $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
+    -- sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
 
-    return $ map createFileWithContents Filesys.serializationPathsAndInitialContents
+    sequence $ map createFileWithContents Filesys.serializationPathsAndInitialContents
 
     currDir <- Dir.getCurrentDirectory
     if rootDirAlreadyExists
         then putStrLn
             $ "Re-initialized existing horse-control repository in"
-            ++ currDir
+            ++ currDir ++ "/" ++ Filesys.rootPath
         else putStrLn
             $ "Initialized existing horse-control repository in"
-            ++ currDir
+            ++ currDir ++ "/" ++ Filesys.rootPath
 
     return ()
     where
@@ -64,6 +67,14 @@ init args = do
                 then Dir.removeDirectoryRecursive dir
                 else return ()
             Dir.createDirectory dir
+            return ()
+
+status :: [String] -> IO ()
+status args = do
+    stagingAreaFileContents <- ByteString.readFile Filesys.stagingAreaPath
+    let (Right stagingArea) = decode stagingAreaFileContents :: Either String StagingArea -- TODO
+    print stagingArea
+    putStrLn $ "running command \"status\" with args " ++ Prelude.show args
 
 add :: [String] -> IO ()
 add files = do
@@ -88,10 +99,6 @@ diff args = do
 log :: [String] -> IO ()
 log args = do
     putStrLn $ "running command \"log\" with args " ++ Prelude.show args
-
-status :: [String] -> IO ()
-status args = do
-    putStrLn $ "running command \"status\" with args " ++ Prelude.show args
 
 show :: [String] -> IO ()
 show args = do

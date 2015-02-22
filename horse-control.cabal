@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 
 Library
   Exposed-Modules: Horse.Commands.Plumbing, Horse.Commands.Porcelain, Horse.Types, Horse.Filesys
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring, data-default
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -26,11 +26,12 @@ executable horse
   main-is:             Main.hs
   -- other-modules:    Horse.Commands.Plumbing, Horse.Commands.Porcelain, Horse.Types, Horse.Filesys
   -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring, data-default
   hs-source-dirs:      src
   default-language:    Haskell2010
 
 Test-Suite test-horse
     type:       exitcode-stdio-1.0
     main-is:    Tests/test-horse.hs
-    build-depends: base, QuickCheck
+    build-depends: base, QuickCheck, time, directory, horse-control
+    default-language:    Haskell2010

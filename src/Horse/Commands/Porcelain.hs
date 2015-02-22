@@ -1,3 +1,6 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Horse.Commands.Porcelain
 ( -- * Basic commands
   Horse.Commands.Porcelain.add
@@ -18,51 +21,27 @@ import qualified System.IO as IO
 import qualified System.Directory as Dir
 
 import qualified Horse.Commands.Plumbing as Plumbing
+import qualified Horse.Filesys as Filesys
 
-import qualified Horse.Constants as Constants
+import Data.ByteString as ByteString hiding (putStrLn, map)
 
-{-
-~/.horseconfig : { name :: String
-                 , email :: String }
+import Control.Monad
+import Control.Monad.IO.Class (liftIO)
 
-./.horse
-    info : { head :: Hash
-           , stagingArea :: [diffhash] }
-
-    diffs
-        hash => (FilePath, diff)
-
-    commits
-        hash => ( author -- (name, e-mail)
-                , date
-                , hash
-                , [parenthash]
-                , [diffhash] ) -- TODO: tree?
--}
-
+import qualified Database.LevelDB as DB
 
 init :: [String] -> IO ()
 init args = do
-    -- root directory
-    dirAlreadyExists <- Dir.doesDirectoryExist Constants.rootPath
-    if dirAlreadyExists
-        then Dir.removeDirectoryRecursive Constants.rootPath
-        else return ()
-    Dir.createDirectory Constants.rootPath
+    rootDirAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
 
-    -- diffs
-    Dir.createDirectory Constants.diffsPath
+    return $ map destructivelyCreateDirectory Filesys.directories
 
-    -- blobs
-    Dir.createDirectory Constants.blobsPath
+    -- return $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
 
-    -- info file
-    infoHandle <- IO.openFile Constants.infoPath IO.WriteMode
-    IO.hPutStr infoHandle Constants.infoInitialContents
-    IO.hClose infoHandle
+    return $ map createFileWithContents Filesys.serializationPathsAndInitialContents
 
     currDir <- Dir.getCurrentDirectory
-    if dirAlreadyExists
+    if rootDirAlreadyExists
         then putStrLn
             $ "Re-initialized existing horse-control repository in"
             ++ currDir
@@ -70,21 +49,37 @@ init args = do
             $ "Initialized existing horse-control repository in"
             ++ currDir
 
+    return ()
+    where
+        createFileWithContents :: (FilePath, ByteString) -> IO ()
+        createFileWithContents (path, contents) = do
+            handle <- IO.openFile path IO.WriteMode
+            ByteString.hPutStr handle contents
+            IO.hClose handle
+
+        destructivelyCreateDirectory :: FilePath -> IO ()
+        destructivelyCreateDirectory dir = do
+            dirAlreadyExists <- Dir.doesDirectoryExist dir
+            if dirAlreadyExists
+                then Dir.removeDirectoryRecursive dir
+                else return ()
+            Dir.createDirectory dir
+
 add :: [String] -> IO ()
-add args = do
-    putStrLn $ "running command \"add\" with args " ++ Prelude.show args
+add files = do
+    putStrLn $ "running command \"add\" with args " ++ Prelude.show files
 
 rm :: [String] -> IO ()
 rm args = do
     putStrLn $ "running command \"rm\" with args " ++ Prelude.show args
 
-checkout :: [String] -> IO ()
-checkout args = do
-    putStrLn $ "running command \"checkout\" with args " ++ Prelude.show args
-
 commit :: [String] -> IO ()
 commit args = do
     putStrLn $ "running command \"commit\" with args " ++ Prelude.show args
+
+checkout :: [String] -> IO ()
+checkout args = do
+    putStrLn $ "running command \"checkout\" with args " ++ Prelude.show args
 
 diff :: [String] -> IO ()
 diff args = do

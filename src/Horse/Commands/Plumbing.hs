@@ -1,31 +1,25 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 module Horse.Commands.Plumbing
 ( -- * Basic commands
-  hashObject
+  storeCommit
 ) where
 
 import qualified System.IO as IO
 import qualified System.Directory as Dir
 
-import qualified Horse.Constants as Constants
+import qualified Horse.Filesys as Filesys
+import Horse.Types as Types
 
-{-
-~/.horseconfig : { name :: String
-                 , email :: String }
+import Data.Default
 
-./.horse
-    info : { head :: Hash
-           , stagingArea :: [diffhash] }
+import Data.ByteString as ByteString
 
-    diffs
-        hash => (FilePath, diff)
+import qualified Crypto.Hash.SHA256 as SHA256
 
-    commits
-        hash => ( author -- (name, e-mail)
-                , date
-                , hash
-                , [parenthash]
-                , [diffhash] ) -- TODO: tree?
--}
+import GHC.Generics
 
-hashObject :: String -> IO ()
-hashObject s = return ()
+storeCommit :: Commit -> IO Hash
+storeCommit s = do
+    return def

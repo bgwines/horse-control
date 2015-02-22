@@ -1,0 +1,14 @@
+
+FILES
+    ~/.horseconfig : Author
+
+    ./.horse
+        HEAD : { hash :: Hash }
+
+        stagingArea : Hash
+
+        diffs
+            Hash => Diff
+
+        commits
+            Hash => Commit

@@ -1,8 +1,13 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 import System.Environment
 import System.Exit
 
 import qualified Horse.Commands.Porcelain as Porcelain
 import qualified Horse.Commands.Plumbing as Plumbing
+import qualified Horse.Filesys as Filesys
+import qualified Horse.Types as Types
 
 helpText :: String
 helpText = "<insert help text here>"
@@ -32,4 +37,4 @@ parseArgs args =
         die  = exitWith (ExitFailure 1)
 
 main :: IO ()
-main = getArgs >>= parseArgs >>= putStr
+main = do getArgs >>= parseArgs >>= putStr

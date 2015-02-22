@@ -12,6 +12,8 @@ import System.Directory
 import Horse.Commands.Porcelain as Porcelain
 import Horse.Filesys as Filesys
 
+import Test.HUnit
+
 getTestDirectory :: IO FilePath
 getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
     where
@@ -21,29 +23,27 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
         formatChar ':' = '-'
         formatChar ch = ch
 
-testPlumbing :: IO ()
-testPlumbing = return ()
-
-testInit :: IO Bool
-testInit = do
+testInit :: Test
+testInit = TestCase $ do
     Porcelain.init []
-    success <- doesDirectoryExist Filesys.rootPath
-    putStrLn $ "empty repository creation successful? " ++ (Prelude.show success)
-    return success
+    rootDirectoryCreated <- doesDirectoryExist Filesys.rootPath
+    assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
 
-testPorcelain :: IO ()
-testPorcelain = do
-    testInit
-    return ()
+testPlumbing :: Test
+testPlumbing = TestList []
 
-main :: IO ()
+testPorcelain :: Test
+testPorcelain = TestList
+    [ TestLabel "horse init" testInit ]
+
+main :: IO Counts
 main = do
     testDirectory <- getTestDirectory
     createDirectory testDirectory
     setCurrentDirectory testDirectory
 
-    testPlumbing
-    testPorcelain
+    runTestTT testPlumbing
+    runTestTT testPorcelain
 
     setCurrentDirectory ".."
     removeDirectoryRecursive testDirectory

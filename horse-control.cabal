@@ -33,5 +33,5 @@ executable horse
 Test-Suite test-horse
     type:       exitcode-stdio-1.0
     main-is:    Tests/test-horse.hs
-    build-depends: base, QuickCheck, time, directory, horse-control
+    build-depends: base, QuickCheck, time, directory, horse-control, HUnit
     default-language:    Haskell2010

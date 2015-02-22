@@ -37,4 +37,4 @@ parseArgs args =
         die  = exitWith (ExitFailure 1)
 
 main :: IO ()
-main = do getArgs >>= parseArgs >>= putStr
+main = getArgs >>= parseArgs >>= putStr

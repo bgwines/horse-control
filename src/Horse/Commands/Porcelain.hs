@@ -22,14 +22,19 @@ import qualified System.Directory as Dir
 
 import qualified Horse.Commands.Plumbing as Plumbing
 import qualified Horse.Filesys as Filesys
+import qualified Horse.IO as HIO
 import Horse.Types
 
 import Data.Serialize
+
+import Data.Either.Unwrap
 
 import Data.ByteString as ByteString hiding (putStrLn, map)
 
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
+
+import Control.Applicative
 
 import qualified Database.LevelDB as DB
 
@@ -70,15 +75,16 @@ init _ = do
             return ()
 
 status :: [String] -> IO ()
-status args = do
-    stagingAreaFileContents <- ByteString.readFile Filesys.stagingAreaPath
-    let (Right stagingArea) = decode stagingAreaFileContents :: Either String StagingArea -- TODO
+status [] = do
+    stagingArea <- HIO.loadStagingArea
     print stagingArea
-    putStrLn $ "running command \"status\" with args " ++ Prelude.show args
+status args = do
+    putStrLn $ "status don't take no args, dude. Was given: " ++ Prelude.show args
 
 add :: [String] -> IO ()
-add files = do
-    putStrLn $ "running command \"add\" with args " ++ Prelude.show files
+add filesToAdd = do
+    stagingArea <- HIO.loadStagingArea
+    HIO.writeStagingArea $ stagingArea { files = (files stagingArea) ++ filesToAdd }
 
 rm :: [String] -> IO ()
 rm args = do

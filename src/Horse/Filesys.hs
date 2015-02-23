@@ -48,7 +48,7 @@ headInitialContents = encode $ Head { headHash = def }
 
 stagingAreaInitialContents :: ByteString
 stagingAreaInitialContents = encode
-    $ StagingArea { stagedContentDiffHash = def }
+    $ StagingArea { files = def }
 
 -- * lists
 

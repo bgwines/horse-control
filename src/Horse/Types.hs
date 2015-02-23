@@ -62,7 +62,7 @@ data Head = Head {
 instance Serialize Head
 
 data StagingArea = StagingArea {
-    stagedContentDiffHash :: Hash
+    files :: [FilePath]
 } deriving (Show, Generic)
 
 instance Serialize StagingArea

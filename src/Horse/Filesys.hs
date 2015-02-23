@@ -6,14 +6,14 @@ module Horse.Filesys
 , diffsPath
 , commitsPath
 
--- * file contents
-, headInitialContents
-, stagingAreaInitialContents
-
 -- * lists
 , directories
 , databasePaths
 , serializationPathsAndInitialContents
+
+-- * utility functions
+, createFileWithContents
+, destructivelyCreateDirectory
 ) where
 
 import Horse.Types as Types
@@ -23,6 +23,9 @@ import Data.ByteString as ByteString
 import Data.Serialize
 
 import Data.Default
+
+import qualified System.IO as IO
+import qualified System.Directory as Dir
 
 -- * paths
 
@@ -41,15 +44,6 @@ diffsPath = rootPath ++ "/diffs"
 commitsPath :: FilePath
 commitsPath = rootPath ++ "/commits"
 
--- * file contents
-
-headInitialContents :: ByteString
-headInitialContents = encode $ Head { headHash = def }
-
-stagingAreaInitialContents :: ByteString
-stagingAreaInitialContents = encode
-    $ StagingArea { files = def }
-
 -- * lists
 
 directories :: [FilePath]
@@ -60,5 +54,22 @@ databasePaths = [diffsPath, commitsPath]
 
 serializationPathsAndInitialContents :: [(FilePath, ByteString)]
 serializationPathsAndInitialContents =
-    [ (headPath, headInitialContents)
-    , (stagingAreaPath, stagingAreaInitialContents) ]
+    [ (headPath, encode $ (def :: Head))
+    , (stagingAreaPath, encode $ (def :: StagingArea)) ]
+
+-- * utility functions
+
+createFileWithContents :: (FilePath, ByteString) -> IO ()
+createFileWithContents (path, contents) = do
+    handle <- IO.openFile path IO.WriteMode
+    ByteString.hPutStr handle contents
+    IO.hClose handle
+
+destructivelyCreateDirectory :: FilePath -> IO ()
+destructivelyCreateDirectory dir = do
+    dirAlreadyExists <- Dir.doesDirectoryExist dir
+    if dirAlreadyExists
+        then Dir.removeDirectoryRecursive dir
+        else return ()
+    Dir.createDirectory dir
+    return ()

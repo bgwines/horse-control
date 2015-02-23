@@ -61,8 +61,18 @@ data Head = Head {
 
 instance Serialize Head
 
+-- why doesn't Generic handle this?
+instance Default Head where
+    def :: Head
+    def = Head { headHash = def }
+
 data StagingArea = StagingArea {
-    files :: [FilePath]
+    modsOrAdds :: [FilePath],
+    deletions :: [FilePath]
 } deriving (Show, Generic)
 
 instance Serialize StagingArea
+
+instance Default StagingArea where
+    def :: StagingArea
+    def = StagingArea { modsOrAdds = def, deletions = def }

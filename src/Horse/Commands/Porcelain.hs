@@ -36,17 +36,31 @@ import Control.Monad.IO.Class (liftIO)
 
 import Control.Applicative
 
-import qualified Database.LevelDB as DB
+import qualified Database.LevelDB.Base as DB
+
+data Flag
+    = Add
+    | Delete
+    | List
+    | Number Integer
+    | Squash
+    | FastForward
+    | All
+    | Verbose
+    | Quiet
+    | Recursive
+    | Force
+    | Message
 
 init :: [String] -> IO ()
 init _ = do
     rootDirAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
 
-    sequence $ map destructivelyCreateDirectory Filesys.directories
+    sequence $ map Filesys.destructivelyCreateDirectory Filesys.directories
 
-    -- sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
+    sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
 
-    sequence $ map createFileWithContents Filesys.serializationPathsAndInitialContents
+    sequence $ map Filesys.createFileWithContents Filesys.serializationPathsAndInitialContents
 
     currDir <- Dir.getCurrentDirectory
     if rootDirAlreadyExists
@@ -58,37 +72,21 @@ init _ = do
             ++ currDir ++ "/" ++ Filesys.rootPath
 
     return ()
-    where
-        createFileWithContents :: (FilePath, ByteString) -> IO ()
-        createFileWithContents (path, contents) = do
-            handle <- IO.openFile path IO.WriteMode
-            ByteString.hPutStr handle contents
-            IO.hClose handle
-
-        destructivelyCreateDirectory :: FilePath -> IO ()
-        destructivelyCreateDirectory dir = do
-            dirAlreadyExists <- Dir.doesDirectoryExist dir
-            if dirAlreadyExists
-                then Dir.removeDirectoryRecursive dir
-                else return ()
-            Dir.createDirectory dir
-            return ()
 
 status :: [String] -> IO ()
-status [] = do
+status _ = do
     stagingArea <- HIO.loadStagingArea
     print stagingArea
-status args = do
-    putStrLn $ "status don't take no args, dude. Was given: " ++ Prelude.show args
 
 add :: [String] -> IO ()
-add filesToAdd = do
+add args = do
     stagingArea <- HIO.loadStagingArea
-    HIO.writeStagingArea $ stagingArea { files = (files stagingArea) ++ filesToAdd }
+    HIO.writeStagingArea $ stagingArea { modsOrAdds = (modsOrAdds stagingArea) ++ args }
 
 rm :: [String] -> IO ()
 rm args = do
-    putStrLn $ "running command \"rm\" with args " ++ Prelude.show args
+    stagingArea <- HIO.loadStagingArea
+    HIO.writeStagingArea $ stagingArea { deletions = (deletions stagingArea) ++ args }
 
 commit :: [String] -> IO ()
 commit args = do

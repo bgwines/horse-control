@@ -2,6 +2,9 @@ module Horse.IO
 ( -- * staging area
   loadStagingArea
 , writeStagingArea
+
+-- * commits
+, writeCommit
 ) where
 
 import Prelude
@@ -39,3 +42,8 @@ writeStagingArea :: StagingArea -> IO ()
 writeStagingArea
     = ByteString.writeFile Filesys.stagingAreaPath
     . encode
+
+-- TODO
+writeCommit :: Commit -> Hash -> IO ()
+writeCommit commit key = do
+    return def

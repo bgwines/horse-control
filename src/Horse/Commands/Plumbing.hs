@@ -3,7 +3,7 @@
 
 module Horse.Commands.Plumbing
 ( -- * Basic commands
-  storeCommit
+  diffFiles
 ) where
 
 import qualified System.IO as IO
@@ -20,6 +20,5 @@ import qualified Crypto.Hash.SHA256 as SHA256
 
 import GHC.Generics
 
-storeCommit :: Commit -> IO Hash
-storeCommit s = do
-    return def
+diffFiles :: FilePath -> FilePath -> IO ByteString
+diffFiles a b = return def

@@ -20,23 +20,30 @@ import qualified Prelude (show, init, log)
 import qualified System.IO as IO
 import qualified System.Directory as Dir
 
-import qualified Horse.Commands.Plumbing as Plumbing
-import qualified Horse.Filesys as Filesys
-import qualified Horse.IO as HIO
-import Horse.Types
-
 import Data.Serialize
+
+import Data.Default
 
 import Data.Either.Unwrap
 
-import Data.ByteString as ByteString hiding (putStrLn, map)
+import Data.ByteString as ByteString hiding (putStrLn, map, head)
 
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
 
-import Control.Applicative
+import Control.Applicative ((<$>), (<*>))
+
+import Data.Time.Clock (getCurrentTime, utctDay)
+import Data.Time.Calendar (toGregorian)
 
 import qualified Database.LevelDB.Base as DB
+
+import qualified Crypto.Hash.SHA256 as SHA256
+
+import qualified Horse.Commands.Plumbing as Plumbing
+import qualified Horse.Filesys as Filesys
+import qualified Horse.IO as HIO
+import Horse.Types as Types
 
 data Flag
     = Add
@@ -83,6 +90,7 @@ add args = do
     stagingArea <- HIO.loadStagingArea
     HIO.writeStagingArea $ stagingArea { modsOrAdds = (modsOrAdds stagingArea) ++ args }
 
+-- TODO: rm from filesystem
 rm :: [String] -> IO ()
 rm args = do
     stagingArea <- HIO.loadStagingArea
@@ -90,7 +98,44 @@ rm args = do
 
 commit :: [String] -> IO ()
 commit args = do
-    putStrLn $ "running command \"commit\" with args " ++ Prelude.show args
+    now <- fmap (toGregorian . utctDay) getCurrentTime
+    parentHash <- return def -- TODO
+    stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
+    -- TODO: coalesce commit-creation somehow?
+    let hashlessCommit = Commit {
+        author                = ( "Brett Wines"
+                                , "bgwines@cs.stanford.edu") -- TODO
+        , date                = now
+        , hash                = def -- no hash yet since commit
+                                    -- hasn't been created
+        , parentHash          = parentHash
+        , secondaryParentHash = def -- not a merge commit, so
+                                    -- no secondary parent
+        , Types.diff          = stagedDiff -- TODO: handle more nicely
+        , message             = message }
+    let commitHash = SHA256.hash . encode $ hashlessCommit
+    let completeCommit = hashlessCommit { hash = commitHash }
+
+    HIO.writeCommit completeCommit commitHash
+
+    HIO.writeStagingArea (def :: StagingArea)
+
+    -- TODO: print
+    --     [master d75dc6d] <commit message
+    --      1 file changed, 1 insertion(+)
+    --      create mode 100644 hi.txt
+
+    where
+        message :: String
+        message = head args -- TODO
+
+        -- TODO: where does this go?
+        hashCommit :: Commit -> Hash
+        hashCommit = SHA256.hash . encode
+
+        -- TODO
+        getStagedDiff :: StagingArea -> IO Diff
+        getStagedDiff stagingArea = return def
 
 checkout :: [String] -> IO ()
 checkout args = do

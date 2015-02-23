@@ -48,9 +48,10 @@ data Commit = Commit {
     author :: (String, Email),
     date :: Date,
     hash :: Hash,
-    parent :: Hash,
-    secondaryParent :: Maybe Hash,
-    diff :: Diff
+    parentHash :: Hash,
+    secondaryParentHash :: Maybe Hash,
+    diff :: Diff,
+    message :: String
 } deriving (Show, Generic)
 
 instance Serialize Commit

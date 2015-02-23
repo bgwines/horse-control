@@ -34,7 +34,7 @@ instance Default ByteString where
 
 type Diff = [(FilePath, String, String)]
 
--- `toGregorian` on a date
+-- `toGregorian . utctDay` on a date
 type Date = (Integer, Int, Int)
 
 data Author = Author {

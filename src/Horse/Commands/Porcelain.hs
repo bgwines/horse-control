@@ -22,11 +22,16 @@ import qualified System.Directory as Dir
 
 import Data.Serialize
 
+import qualified Data.Hex as Hex
+
 import Data.Default
+
+import Text.Printf (printf)
 
 import Data.Either.Unwrap
 
-import Data.ByteString as ByteString hiding (putStrLn, map, head)
+-- TODO
+import Data.ByteString as ByteString hiding (putStrLn, map, head, concatMap)
 
 import Control.Monad
 import Control.Monad.IO.Class (liftIO)
@@ -37,6 +42,7 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
 import qualified Database.LevelDB.Base as DB
+import qualified Database.LevelDB.Internal as DBInternal
 
 import qualified Crypto.Hash.SHA256 as SHA256
 
@@ -78,6 +84,7 @@ init _ = do
             $ "Initialized existing horse-control repository in"
             ++ currDir ++ "/" ++ Filesys.rootPath
 
+    --DBInternal.unsafeClose db
     return ()
 
 status :: [String] -> IO ()
@@ -113,12 +120,17 @@ commit args = do
                                     -- no secondary parent
         , Types.diff          = stagedDiff -- TODO: handle more nicely
         , message             = message }
-    let commitHash = SHA256.hash . encode $ hashlessCommit
+
+    let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
     HIO.writeCommit completeCommit commitHash
 
     HIO.writeStagingArea (def :: StagingArea)
+
+    writtenCommit <- HIO.loadCommit commitHash
+    putStrLn $ "Testing writing of commit: loading written commit: "
+        ++ (Prelude.show writtenCommit)
 
     -- TODO: print
     --     [master d75dc6d] <commit message
@@ -131,7 +143,11 @@ commit args = do
 
         -- TODO: where does this go?
         hashCommit :: Commit -> Hash
-        hashCommit = SHA256.hash . encode
+        hashCommit
+            = ByteString.take 40
+            . Hex.hex
+            . SHA256.hash
+            . encode
 
         -- TODO
         getStagedDiff :: StagingArea -> IO Diff

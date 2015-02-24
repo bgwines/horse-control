@@ -5,10 +5,11 @@
 
 module Horse.Types(
 -- * Records
-  Author(..)
+  UserInfo(..)
 , Commit(..)
 , Head(..)
 , StagingArea(..)
+, Config(..)
 
 -- * Aliases
 , Email
@@ -66,15 +67,15 @@ type Diff = [(FilePath, String, String)]
 -- `toGregorian . utctDay` on a date
 type Date = (Integer, Int, Int)
 
-data Author = Author {
+data UserInfo = UserInfo {
     name :: String,
     email :: String
 } deriving (Eq, Show, Generic)
 
-instance Serialize Author
+instance Serialize UserInfo
 
 data Commit = Commit {
-    author :: (String, Email),
+    author :: UserInfo,
     date :: Date,
     hash :: Hash,
     parentHash :: Hash,
@@ -84,6 +85,12 @@ data Commit = Commit {
 } deriving (Eq, Show, Generic)
 
 instance Serialize Commit
+
+data Config = Config {
+    userInfo :: UserInfo
+} deriving (Eq, Show, Generic)
+
+instance Serialize Config
 
 data Head = Head {
     headHash :: Hash

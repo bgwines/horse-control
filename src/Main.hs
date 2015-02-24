@@ -25,6 +25,7 @@ parseArgs args =
         "commit"        -> (Porcelain.commit     $ tail args ) >> exit
         "diff"          -> (Porcelain.diff       $ tail args ) >> exit
         "init"          -> (Porcelain.init       $ tail args ) >> exit
+        "config"        -> (Porcelain.config     $ tail args ) >> exit
         "log"           -> (Porcelain.log        $ tail args ) >> exit
         "status"        -> (Porcelain.status     $ tail args ) >> exit
         "show"          -> (Porcelain.show       $ tail args ) >> exit

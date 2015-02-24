@@ -4,8 +4,12 @@ module Horse.IO
 , writeStagingArea
 
 -- * commits
-, writeCommit
 , loadCommit
+, writeCommit
+
+-- * config
+, loadConfig
+, writeConfig
 ) where
 
 -- imports
@@ -48,24 +52,28 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 import Horse.Filesys as Filesys
 
+writeFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
+writeFile filepath
+    = ByteString.writeFile filepath
+    . Serialize.encode
+
+loadFromFile :: (Serialize.Serialize a) => FilePath -> IO a
+loadFromFile filepath = do
+    fromRight
+    <$> Serialize.decode
+    <$> ByteString.readFile filepath
+
 -- * staging area
 
 loadStagingArea :: IO StagingArea
-loadStagingArea
-    = fromRight
-    <$> Serialize.decode
-    <$> ByteString.readFile Filesys.stagingAreaPath
+loadStagingArea = loadFromFile Filesys.stagingAreaPath
 
 writeStagingArea :: StagingArea -> IO ()
 writeStagingArea
     = ByteString.writeFile Filesys.stagingAreaPath
     . Serialize.encode
 
-writeCommit :: Commit -> Hash -> IO ()
-writeCommit commit key = do
-    db <- DB.open Filesys.commitsPath Default.def
-    DB.put db Default.def key (Serialize.encode commit)
-    DBInternal.unsafeClose db -- TODO
+-- * commits
 
 -- TODO: error propagation
 loadCommit :: Hash -> IO Commit
@@ -74,3 +82,19 @@ loadCommit key = do
     commit <- DB.get db Default.def key
     DBInternal.unsafeClose db
     return $ fromRight . Serialize.decode . fromJust $ commit
+
+writeCommit :: Commit -> Hash -> IO ()
+writeCommit commit key = do
+    db <- DB.open Filesys.commitsPath Default.def
+    DB.put db Default.def key (Serialize.encode commit)
+    DBInternal.unsafeClose db -- TODO
+
+-- * config
+
+loadConfig :: IO Config
+loadConfig = Filesys.getConfigPath >>= loadFromFile
+
+writeConfig :: Config -> IO ()
+writeConfig config = do
+    configPath <- Filesys.getConfigPath
+    ByteString.writeFile configPath (Serialize.encode config)

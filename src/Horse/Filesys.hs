@@ -5,6 +5,7 @@ module Horse.Filesys
 , stagingAreaPath
 , diffsPath
 , commitsPath
+, getConfigPath
 
 -- * lists
 , directories
@@ -71,6 +72,9 @@ diffsPath = rootPath ++ "/diffs"
 
 commitsPath :: FilePath
 commitsPath = rootPath ++ "/commits"
+
+getConfigPath :: IO FilePath
+getConfigPath = Dir.getHomeDirectory >>= return . (flip (++)) "/.horseconfig"
 
 -- * lists
 

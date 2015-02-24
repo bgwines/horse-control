@@ -3,12 +3,13 @@
 
 module Horse.Commands.Porcelain
 ( -- * Basic commands
-  Horse.Commands.Porcelain.add
+  Horse.Commands.Porcelain.config
+, Horse.Commands.Porcelain.init
+, Horse.Commands.Porcelain.add
 , Horse.Commands.Porcelain.rm
 , Horse.Commands.Porcelain.checkout
 , Horse.Commands.Porcelain.commit
 , Horse.Commands.Porcelain.diff
-, Horse.Commands.Porcelain.init
 , Horse.Commands.Porcelain.log
 , Horse.Commands.Porcelain.status
 , Horse.Commands.Porcelain.show
@@ -71,6 +72,14 @@ data Flag
     | Force
     | Message
 
+config :: [String] -> IO ()
+config (name:email:[]) = do -- TODO
+    configPath <- Filesys.getConfigPath
+    Filesys.createFileWithContents (configPath, ByteString.empty) -- TODO
+
+    let userInfo = UserInfo { name = name, email = email }
+    HIO.writeConfig $ Config { userInfo = userInfo }
+
 init :: [String] -> IO ()
 init _ = do
     rootDirAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
@@ -114,10 +123,10 @@ commit args = do
     now <- fmap (toGregorian . utctDay) getCurrentTime
     parentHash <- return Default.def -- TODO
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
+    config <- HIO.loadConfig
     -- TODO: coalesce commit-creation somehow?
     let hashlessCommit = Commit {
-        author                  = ( "Brett Wines"
-                                  , "bgwines@cs.stanford.edu") -- TODO
+        author                  = userInfo config
         , date                  = now
         , hash                  = Default.def -- no hash yet since commit
                                               -- hasn't been created

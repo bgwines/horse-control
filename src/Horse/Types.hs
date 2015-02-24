@@ -69,7 +69,7 @@ type Date = (Integer, Int, Int)
 data Author = Author {
     name :: String,
     email :: String
-} deriving (Show, Generic)
+} deriving (Eq, Show, Generic)
 
 instance Serialize Author
 
@@ -81,13 +81,13 @@ data Commit = Commit {
     secondaryParentHash :: Maybe Hash,
     diffWithPrimaryParent :: Diff,
     message :: String
-} deriving (Show, Generic)
+} deriving (Eq, Show, Generic)
 
 instance Serialize Commit
 
 data Head = Head {
     headHash :: Hash
-} deriving (Show, Generic)
+} deriving (Eq, Show, Generic)
 
 instance Serialize Head
 
@@ -99,7 +99,7 @@ instance Default Head where
 data StagingArea = StagingArea {
     modsOrAdds :: [FilePath],
     deletions :: [FilePath]
-} deriving (Show, Generic)
+} deriving (Eq, Show, Generic)
 
 instance Serialize StagingArea
 

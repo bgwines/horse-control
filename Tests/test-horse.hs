@@ -38,8 +38,11 @@ import Control.Monad.IO.Class (liftIO)
 
 -- horse imports
 
-import Horse.Filesys as Filesys
-import Horse.Commands.Porcelain as Porcelain
+import Horse.Types
+
+import qualified Horse.IO as HIO
+import qualified Horse.Filesys as Filesys
+import qualified Horse.Commands.Porcelain as Porcelain
 
 getTestDirectory :: IO FilePath
 getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
@@ -59,10 +62,20 @@ testInit = TestCase $ do
 testAddAndRm :: Test
 testAddAndRm = TestCase $ do
     Porcelain.init []
---    Filesys.createFileWithContents "a" (ByteString.pack "a")
---    Porcelain.add file
---    Porcelain.status
-    assertBool "x" True
+
+    let addedFile = "a"
+    handle <- IO.openFile addedFile IO.WriteMode
+    IO.hPutStr handle "a"
+    IO.hClose handle
+
+    Porcelain.add [addedFile]
+
+    stagingArea <- HIO.loadStagingArea
+
+    assertEqual "Should only have staged addition of the added file; no more; no less. " [addedFile] (modsOrAdds stagingArea)
+    assertEqual "Should not have staged deletions of files. " [] (deletions stagingArea)
+
+
     -- rm stuff
     -- how does Git handle adding and rming the same file?
 

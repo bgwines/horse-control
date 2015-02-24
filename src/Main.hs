@@ -4,10 +4,10 @@
 import System.Environment
 import System.Exit
 
-import qualified Horse.Commands.Porcelain as Porcelain
-import qualified Horse.Commands.Plumbing as Plumbing
-import qualified Horse.Filesys as Filesys
 import qualified Horse.Types as Types
+import qualified Horse.Filesys as Filesys
+import qualified Horse.Commands.Plumbing as Plumbing
+import qualified Horse.Commands.Porcelain as Porcelain
 
 helpText :: String
 helpText = "<insert help text here>"

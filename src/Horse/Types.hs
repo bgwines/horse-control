@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
 
 module Horse.Types(
@@ -15,22 +16,50 @@ module Horse.Types(
 , Diff
 ) where
 
+-- imports
+
+import Prelude hiding (show, init, log)
+
 import GHC.Generics
 
-import Data.Default
+-- qualified imports
 
-import Data.Serialize
-import Data.ByteString as ByteString
+import qualified System.IO as IO
+import qualified System.Directory as Dir
 
-import Data.Time.Clock
+import qualified Data.Hex as Hex
+
+import qualified Crypto.Hash.SHA256 as SHA256
+
+import qualified Database.LevelDB.Base as DB
+import qualified Database.LevelDB.Internal as DBInternal
+
+-- imported functions
+
+import Data.Serialize (Serialize)
+
+import Data.Default (Default, def)
+import Data.ByteString (ByteString, empty)
+
+import Data.Maybe (fromJust)
+import Data.Either.Unwrap (fromLeft, fromRight)
+
+import Data.Time.Clock (getCurrentTime, utctDay)
+import Data.Time.Calendar (toGregorian)
+
+import Text.Printf (printf)
+
+import Control.Monad ((>>=), return)
+import Control.Applicative ((<$>), (<*>))
+import Control.Monad.IO.Class (liftIO)
 
 type Email = String
 
 type Hash = ByteString
 
-instance Default ByteString where
+instance Default Hash where
     def :: Hash
-    def = ByteString.empty
+    def = empty
 
 type Diff = [(FilePath, String, String)]
 
@@ -50,7 +79,7 @@ data Commit = Commit {
     hash :: Hash,
     parentHash :: Hash,
     secondaryParentHash :: Maybe Hash,
-    diff :: Diff,
+    diffWithPrimaryParent :: Diff,
     message :: String
 } deriving (Show, Generic)
 

@@ -1,18 +1,45 @@
 module Main where
 
-import System.Exit
-
-import Test.QuickCheck
-
-import Data.Time.Clock
-import Data.Time.Calendar
-
-import System.Directory
-
-import Horse.Commands.Porcelain as Porcelain
-import Horse.Filesys as Filesys
+-- imports
 
 import Test.HUnit
+import Test.QuickCheck
+
+-- qualified imports
+
+import qualified System.IO as IO
+import qualified System.Directory as Dir
+
+import qualified Data.Hex as Hex
+import qualified Data.Default as Default
+import qualified Data.Serialize as Serialize
+import qualified Data.ByteString as ByteString
+
+import qualified Crypto.Hash.SHA256 as SHA256
+
+import qualified Database.LevelDB.Base as DB
+import qualified Database.LevelDB.Internal as DBInternal
+
+-- imported functions
+
+import Text.Printf (printf)
+
+import System.Exit (exitSuccess)
+
+import Data.Maybe (fromJust)
+import Data.Either.Unwrap (fromLeft, fromRight)
+
+import Data.Time.Clock (getCurrentTime, utctDay)
+import Data.Time.Calendar (toGregorian)
+
+import Control.Monad ((>>=), return)
+import Control.Applicative ((<$>), (<*>))
+import Control.Monad.IO.Class (liftIO)
+
+-- horse imports
+
+import Horse.Filesys as Filesys
+import Horse.Commands.Porcelain as Porcelain
 
 getTestDirectory :: IO FilePath
 getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
@@ -26,26 +53,37 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
 testInit :: Test
 testInit = TestCase $ do
     Porcelain.init []
-    rootDirectoryCreated <- doesDirectoryExist Filesys.rootPath
+    rootDirectoryCreated <- Dir.doesDirectoryExist Filesys.rootPath
     assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
+
+testAddAndRm :: Test
+testAddAndRm = TestCase $ do
+    Porcelain.init []
+--    Filesys.createFileWithContents "a" (ByteString.pack "a")
+--    Porcelain.add file
+--    Porcelain.status
+    assertBool "x" True
+    -- rm stuff
+    -- how does Git handle adding and rming the same file?
 
 testPlumbing :: Test
 testPlumbing = TestList []
 
 testPorcelain :: Test
 testPorcelain = TestList
-    [ TestLabel "horse init" testInit ]
+    [ TestLabel "horse init" testInit
+    , TestLabel "horse add, rm" testAddAndRm ]
 
 main :: IO Counts
 main = do
     testDirectory <- getTestDirectory
-    createDirectory testDirectory
-    setCurrentDirectory testDirectory
+    Dir.createDirectory testDirectory
+    Dir.setCurrentDirectory testDirectory
 
     runTestTT testPlumbing
     runTestTT testPorcelain
 
-    setCurrentDirectory ".."
-    removeDirectoryRecursive testDirectory
+    Dir.setCurrentDirectory ".."
+    Dir.removeDirectoryRecursive testDirectory
 
     exitSuccess

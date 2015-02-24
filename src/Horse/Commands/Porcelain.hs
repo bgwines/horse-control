@@ -14,42 +14,48 @@ module Horse.Commands.Porcelain
 , Horse.Commands.Porcelain.show
 ) where
 
-import Prelude
-import qualified Prelude (show, init, log)
+-- imports
+
+import Prelude hiding (show, init, log)
+
+import GHC.Generics
+
+-- qualified imports
 
 import qualified System.IO as IO
 import qualified System.Directory as Dir
 
-import Data.Serialize
-
 import qualified Data.Hex as Hex
+import qualified Data.Default as Default
+import qualified Data.Serialize as Serialize
+import qualified Data.ByteString as ByteString
 
-import Data.Default
-
-import Text.Printf (printf)
-
-import Data.Either.Unwrap
-
--- TODO
-import Data.ByteString as ByteString hiding (putStrLn, map, head, concatMap)
-
-import Control.Monad
-import Control.Monad.IO.Class (liftIO)
-
-import Control.Applicative ((<$>), (<*>))
-
-import Data.Time.Clock (getCurrentTime, utctDay)
-import Data.Time.Calendar (toGregorian)
+import qualified Crypto.Hash.SHA256 as SHA256
 
 import qualified Database.LevelDB.Base as DB
 import qualified Database.LevelDB.Internal as DBInternal
 
-import qualified Crypto.Hash.SHA256 as SHA256
+-- imported functions
 
-import qualified Horse.Commands.Plumbing as Plumbing
-import qualified Horse.Filesys as Filesys
+import Data.Maybe (fromJust)
+import Data.Either.Unwrap (fromLeft, fromRight)
+
+import Data.Time.Clock (getCurrentTime, utctDay)
+import Data.Time.Calendar (toGregorian)
+
+import Text.Printf (printf)
+
+import Control.Monad ((>>=), return)
+import Control.Applicative ((<$>), (<*>))
+import Control.Monad.IO.Class (liftIO)
+
+-- horse-control imports
+
+import Horse.Types
+
 import qualified Horse.IO as HIO
-import Horse.Types as Types
+import qualified Horse.Filesys as Filesys
+import qualified Horse.Commands.Plumbing as Plumbing
 
 data Flag
     = Add
@@ -106,31 +112,32 @@ rm args = do
 commit :: [String] -> IO ()
 commit args = do
     now <- fmap (toGregorian . utctDay) getCurrentTime
-    parentHash <- return def -- TODO
+    parentHash <- return Default.def -- TODO
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
     -- TODO: coalesce commit-creation somehow?
     let hashlessCommit = Commit {
-        author                = ( "Brett Wines"
-                                , "bgwines@cs.stanford.edu") -- TODO
-        , date                = now
-        , hash                = def -- no hash yet since commit
-                                    -- hasn't been created
-        , parentHash          = parentHash
-        , secondaryParentHash = def -- not a merge commit, so
-                                    -- no secondary parent
-        , Types.diff          = stagedDiff -- TODO: handle more nicely
-        , message             = message }
+        author                  = ( "Brett Wines"
+                                  , "bgwines@cs.stanford.edu") -- TODO
+        , date                  = now
+        , hash                  = Default.def -- no hash yet since commit
+                                              -- hasn't been created
+        , parentHash            = parentHash
+        , secondaryParentHash   = Default.def -- not a merge commit, so
+                                              -- no secondary parent
+        , diffWithPrimaryParent = stagedDiff
+        , message               = message }
 
     let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
     HIO.writeCommit completeCommit commitHash
 
-    HIO.writeStagingArea (def :: StagingArea)
+    HIO.writeStagingArea (Default.def :: StagingArea)
 
+    -- debug code; can delete
     writtenCommit <- HIO.loadCommit commitHash
     putStrLn $ "Testing writing of commit: loading written commit: "
-        ++ (Prelude.show writtenCommit)
+    print writtenCommit
 
     -- TODO: print
     --     [master d75dc6d] <commit message
@@ -147,24 +154,28 @@ commit args = do
             = ByteString.take 40
             . Hex.hex
             . SHA256.hash
-            . encode
+            . Serialize.encode
 
         -- TODO
         getStagedDiff :: StagingArea -> IO Diff
-        getStagedDiff stagingArea = return def
+        getStagedDiff stagingArea = return Default.def
 
 checkout :: [String] -> IO ()
 checkout args = do
-    putStrLn $ "running command \"checkout\" with args " ++ Prelude.show args
+    putStrLn $ "running command \"checkout\" with args "
+    print args
 
 diff :: [String] -> IO ()
 diff args = do
-    putStrLn $ "running command \"diff\" with args " ++ Prelude.show args
+    putStrLn $ "running command \"diff\" with args "
+    print args
 
 log :: [String] -> IO ()
 log args = do
-    putStrLn $ "running command \"log\" with args " ++ Prelude.show args
+    putStrLn $ "running command \"log\" with args "
+    print args
 
 show :: [String] -> IO ()
 show args = do
-    putStrLn $ "running command \"show\" with args " ++ Prelude.show args
+    putStrLn $ "running command \"show\" with args "
+    print args

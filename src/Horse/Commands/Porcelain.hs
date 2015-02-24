@@ -12,12 +12,12 @@ module Horse.Commands.Porcelain
 , Horse.Commands.Porcelain.diff
 , Horse.Commands.Porcelain.log
 , Horse.Commands.Porcelain.status
-, Horse.Commands.Porcelain.show
+, Horse.Commands.Porcelain.hshow
 ) where
 
 -- imports
 
-import Prelude hiding (show, init, log)
+import Prelude hiding (init, log)
 
 import GHC.Generics
 
@@ -141,17 +141,18 @@ commit args = do
 
     HIO.writeCommit completeCommit commitHash
 
+    HIO.writeHead $ Head { headHash = commitHash }
+
     HIO.writeStagingArea (Default.def :: StagingArea)
 
     -- debug code; can delete
-    writtenCommit <- HIO.loadCommit commitHash
-    putStrLn $ "Testing writing of commit: loading written commit: "
-    print writtenCommit
+    putStrLn "Testing writing of commit: loading written commit: "
+    (HIO.loadCommit commitHash) >>= print
 
-    -- TODO: print
-    --     [master d75dc6d] <commit message
-    --      1 file changed, 1 insertion(+)
-    --      create mode 100644 hi.txt
+    putStrLn $ "[<branch> " ++ (show . ByteString.take 8 $ commitHash)
+        ++  "] " ++ message
+    putStrLn $ "0" ++ " files changed, " ++ "0" ++ " insertions(+), "
+        ++ "0" ++ " deletions(-)"
 
     where
         message :: String
@@ -184,7 +185,7 @@ log args = do
     putStrLn $ "running command \"log\" with args "
     print args
 
-show :: [String] -> IO ()
-show args = do
+hshow :: [String] -> IO ()
+hshow args = do
     putStrLn $ "running command \"show\" with args "
     print args

@@ -28,7 +28,7 @@ parseArgs args =
         "config"        -> (Porcelain.config     $ tail args ) >> exit
         "log"           -> (Porcelain.log        $ tail args ) >> exit
         "status"        -> (Porcelain.status     $ tail args ) >> exit
-        "show"          -> (Porcelain.show       $ tail args ) >> exit
+        "show"          -> (Porcelain.hshow      $ tail args ) >> exit
         "-v"            -> (putStrLn version                 ) >> exit
         "-h"            -> (putStrLn helpText                ) >> exit
         _               -> ((putStrLn $ "Unrecognized command: "

@@ -3,6 +3,10 @@ module Horse.IO
   loadStagingArea
 , writeStagingArea
 
+-- * HEAD
+, loadHead
+, writeHead
+
 -- * commits
 , loadCommit
 , writeCommit
@@ -52,8 +56,8 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 import Horse.Filesys as Filesys
 
-writeFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
-writeFile filepath
+writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
+writeToFile filepath
     = ByteString.writeFile filepath
     . Serialize.encode
 
@@ -69,9 +73,15 @@ loadStagingArea :: IO StagingArea
 loadStagingArea = loadFromFile Filesys.stagingAreaPath
 
 writeStagingArea :: StagingArea -> IO ()
-writeStagingArea
-    = ByteString.writeFile Filesys.stagingAreaPath
-    . Serialize.encode
+writeStagingArea = writeToFile Filesys.stagingAreaPath
+
+-- * HEAD
+
+loadHead :: IO Head
+loadHead = loadFromFile Filesys.headPath
+
+writeHead :: Head -> IO ()
+writeHead = writeToFile Filesys.headPath
 
 -- * commits
 
@@ -87,7 +97,7 @@ writeCommit :: Commit -> Hash -> IO ()
 writeCommit commit key = do
     db <- DB.open Filesys.commitsPath Default.def
     DB.put db Default.def key (Serialize.encode commit)
-    DBInternal.unsafeClose db -- TODO
+    DBInternal.unsafeClose db
 
 -- * config
 

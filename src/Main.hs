@@ -19,8 +19,7 @@ parseArgs :: [String] -> IO String
 parseArgs [] = parseArgs ["-h"]
 parseArgs args =
     case head args of
-        "add"           -> (Porcelain.add        $ tail args ) >> exit
-        "rm"            -> (Porcelain.rm         $ tail args ) >> exit
+        "mod"           -> (Porcelain.stage     (tail args) Porcelain.Add ) >> exit
         "checkout"      -> (Porcelain.checkout   $ tail args ) >> exit
         "commit"        -> (Porcelain.commit     $ tail args ) >> exit
         "diff"          -> (Porcelain.diff       $ tail args ) >> exit

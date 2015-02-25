@@ -1,3 +1,4 @@
+-- | Module for writing and reading from disk / the database
 module Horse.IO
 ( -- * staging area
   loadStagingArea
@@ -23,6 +24,8 @@ import Prelude hiding (show, init, log)
 import GHC.Generics
 
 -- qualified imports
+
+import qualified Data.Convertible as Convert
 
 import qualified System.IO as IO
 import qualified System.Directory as Dir
@@ -56,11 +59,13 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 import Horse.Filesys as Filesys
 
+-- | Writes a serializable object to a file
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
 writeToFile filepath
     = ByteString.writeFile filepath
     . Serialize.encode
 
+-- | Loads a serializable object from a file
 loadFromFile :: (Serialize.Serialize a) => FilePath -> IO a
 loadFromFile filepath = do
     fromRight
@@ -69,23 +74,28 @@ loadFromFile filepath = do
 
 -- * staging area
 
+-- | Loads the staging area from disk
 loadStagingArea :: IO StagingArea
 loadStagingArea = loadFromFile Filesys.stagingAreaPath
 
+-- | Writes the staging area to disk
 writeStagingArea :: StagingArea -> IO ()
 writeStagingArea = writeToFile Filesys.stagingAreaPath
 
 -- * HEAD
 
+-- | Loads the object representing HEAD from disk
 loadHead :: IO Head
 loadHead = loadFromFile Filesys.headPath
 
+-- | Writes the object representing HEAD to disk
 writeHead :: Head -> IO ()
 writeHead = writeToFile Filesys.headPath
 
 -- * commits
 
 -- TODO: error propagation
+-- | Loads the commit with the given hash from the database
 loadCommit :: Hash -> IO Commit
 loadCommit key = do
     db <- DB.open Filesys.commitsPath Default.def
@@ -93,6 +103,7 @@ loadCommit key = do
     DBInternal.unsafeClose db
     return $ fromRight . Serialize.decode . fromJust $ commit
 
+-- | Writes the commit with the given hash to the database
 writeCommit :: Commit -> Hash -> IO ()
 writeCommit commit key = do
     db <- DB.open Filesys.commitsPath Default.def
@@ -101,9 +112,11 @@ writeCommit commit key = do
 
 -- * config
 
+-- | Loads the object representing user-specified configuration from disk
 loadConfig :: IO Config
 loadConfig = Filesys.getConfigPath >>= loadFromFile
 
+-- | Writes the object representing user-specified configuration to disk
 writeConfig :: Config -> IO ()
 writeConfig config = do
     configPath <- Filesys.getConfigPath

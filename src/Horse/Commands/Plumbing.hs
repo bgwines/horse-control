@@ -1,6 +1,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
 
+-- | Lower-level commands accessible to users through the CLI
 module Horse.Commands.Plumbing
 ( -- * Basic commands
   diffFiles
@@ -41,5 +42,10 @@ import Control.Monad ((>>=), return)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
-diffFiles :: FilePath -> FilePath -> IO ByteString.ByteString
-diffFiles a b = return ByteString.empty
+-- horse-control imports
+
+import Horse.Types
+
+-- | Calculates the difference between two files in the filesystem
+diffFiles :: FilePath -> FilePath -> IO Diff
+diffFiles a b = return Default.def

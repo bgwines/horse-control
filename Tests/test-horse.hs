@@ -68,12 +68,13 @@ testAddAndRm = TestCase $ do
     IO.hPutStr handle "a"
     IO.hClose handle
 
-    Porcelain.add [addedFile]
+    Porcelain.stage [addedFile] Porcelain.Add
 
     stagingArea <- HIO.loadStagingArea
 
-    assertEqual "Should only have staged addition of the added file; no more; no less. " [addedFile] (modsOrAdds stagingArea)
-    assertEqual "Should not have staged deletions of files. " [] (deletions stagingArea)
+    assertEqual "Should only have staged addition of the added file; no more; no less. " [addedFile] (adds stagingArea)
+    assertEqual "Should not have staged modifications of files. " [] (mods stagingArea)
+    assertEqual "Should not have staged deletions of files. " [] (dels stagingArea)
 
 
     -- rm stuff

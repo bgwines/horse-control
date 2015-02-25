@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
 
+-- | Data types used in horse-config implementation
 module Horse.Types(
 -- * Records
   UserInfo(..)
@@ -15,6 +16,10 @@ module Horse.Types(
 , Email
 , Hash
 , Diff
+, Date
+
+-- * constructors
+, stringToHash
 ) where
 
 -- imports
@@ -24,6 +29,8 @@ import Prelude hiding (show, init, log)
 import GHC.Generics
 
 -- qualified imports
+
+import qualified Data.Convertible as Convert
 
 import qualified System.IO as IO
 import qualified System.Directory as Dir
@@ -40,7 +47,7 @@ import qualified Database.LevelDB.Internal as DBInternal
 import Data.Serialize (Serialize)
 
 import Data.Default (Default, def)
-import Data.ByteString (ByteString, empty)
+import Data.ByteString (ByteString, empty, pack)
 
 import Data.Maybe (fromJust)
 import Data.Either.Unwrap (fromLeft, fromRight)
@@ -54,19 +61,28 @@ import Control.Monad ((>>=), return)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
+-- | An e-mail.
 type Email = String
 
+-- | The hash type used for hashing commits and diffs.
 type Hash = ByteString
 
 instance Default Hash where
     def :: Hash
     def = empty
 
+-- | Conversion function for hashes
+stringToHash :: String -> Hash
+stringToHash = pack  . map Convert.convert
+
+-- | The difference between two states of the filesystem.
 type Diff = [(FilePath, String, String)]
 
 -- `toGregorian . utctDay` on a date
+-- | Date information to be stored in commits.
 type Date = (Integer, Int, Int)
 
+-- | A record representing information about the user.
 data UserInfo = UserInfo {
     name :: String,
     email :: String
@@ -74,6 +90,7 @@ data UserInfo = UserInfo {
 
 instance Serialize UserInfo
 
+-- | A commit object.
 data Commit = Commit {
     author :: UserInfo,
     date :: Date,
@@ -86,12 +103,14 @@ data Commit = Commit {
 
 instance Serialize Commit
 
+-- | Custom horse-control configuration, analogous to what's in ~/.gitconfig with Git.
 data Config = Config {
     userInfo :: UserInfo
 } deriving (Eq, Show, Generic)
 
 instance Serialize Config
 
+-- | Functionally very analogous to Git's HEAD pointer.
 data Head = Head {
     headHash :: Hash
 } deriving (Eq, Show, Generic)
@@ -103,13 +122,15 @@ instance Default Head where
     def :: Head
     def = Head { headHash = def }
 
+-- | The staging area. Doesn't explicitly store the diffs; those are computed on the fly.
 data StagingArea = StagingArea {
-    modsOrAdds :: [FilePath],
-    deletions :: [FilePath]
+    adds :: [FilePath],
+    mods :: [FilePath],
+    dels :: [FilePath]
 } deriving (Eq, Show, Generic)
 
 instance Serialize StagingArea
 
 instance Default StagingArea where
     def :: StagingArea
-    def = StagingArea { modsOrAdds = def, deletions = def }
+    def = StagingArea { adds = def, mods = def, dels = def }

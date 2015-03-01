@@ -6,14 +6,11 @@ module Horse.Commands.Porcelain
 ( -- * Basic commands
   Horse.Commands.Porcelain.config
 , Horse.Commands.Porcelain.init
+, Horse.Commands.Porcelain.status
 , Horse.Commands.Porcelain.stage
 , Horse.Commands.Porcelain.checkout
 , Horse.Commands.Porcelain.commit
-, Horse.Commands.Porcelain.diff
-, Horse.Commands.Porcelain.log
-, Horse.Commands.Porcelain.status
 , Horse.Commands.Porcelain.hshow
-, Flag(..)
 ) where
 
 -- imports
@@ -41,7 +38,7 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromMaybe)
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -61,35 +58,31 @@ import qualified Horse.IO as HIO
 import qualified Horse.Filesys as Filesys
 import qualified Horse.Commands.Plumbing as Plumbing
 
--- | Flags passed to porcelain commands
-data Flag
-    = Add
-    | Mod
-    | Del
-    | List
-    | Number Integer
-    | Squash
-    | FastForward
-    | All
-    | Verbose
-    | Quiet
-    | Recursive
-    | Force
-    | Message
-
 -- | Sets user-specific configuration information.
-config :: [String] -> IO ()
-config (name:email:[]) = do -- TODO
+config :: Maybe String -> Maybe Email -> IO ()
+config maybeName maybeEmail = do
     configPath <- Filesys.getConfigPath
-    Filesys.createFileWithContents (configPath, ByteString.empty) -- TODO
+    configFileExistedBefore <- Dir.doesFileExist configPath
 
-    let userInfo = UserInfo { name = name, email = email }
-    HIO.writeConfig $ Config { userInfo = userInfo }
+    unless configFileExistedBefore $ do
+        Filesys.createFileWithContents (configPath, ByteString.empty) -- TODO
+
+        let userInfo = UserInfo {
+              name = fromMaybe Default.def maybeName
+            , email = fromMaybe Default.def maybeEmail }
+        HIO.writeConfig $ Config { userInfo = userInfo }
+
+    when configFileExistedBefore $ do
+        userInfo <- userInfo <$> HIO.loadConfig
+        let updatedUserInfo = UserInfo {
+              name = fromMaybe (name userInfo) maybeName
+            , email = fromMaybe (email userInfo) maybeEmail }
+        HIO.writeConfig $ Config { userInfo = updatedUserInfo }
 
 -- | Initializes an empty repository in the current directory. If
 -- | one currently exists, it aborts.
-init :: [String] -> IO ()
-init _ = do
+init :: IO ()
+init = do
     repositoryAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
 
     when repositoryAlreadyExists
@@ -110,31 +103,33 @@ init _ = do
         return ()
 
 -- | Prints the difference between the working directory and HEAD
-status :: [String] -> IO ()
-status _ = do
+-- TODO: check initialization has happened (all functions should do this)
+status :: IO ()
+status = do
     stagingArea <- HIO.loadStagingArea
     print stagingArea
 
 -- | Adds the specified modification / addition / deletion of the
 -- | specified file to the staging area
-stage :: [String] -> Flag -> IO ()
-stage args flag = do
+stage :: String -> IO ()
+stage path = do
     stagingArea <- HIO.loadStagingArea
 
-    let updatedStagingArea = case flag of Add -> stagingArea { adds = (adds stagingArea) ++ args }
-                                          Mod -> stagingArea { mods = (mods stagingArea) ++ args }
-                                          Del -> stagingArea { dels = (dels stagingArea) ++ args }
-                                          _   -> error "undefined flag"
+    let updatedStagingArea = case 0 of 0 -> stagingArea { adds = path : (adds stagingArea) }
+                                       1 -> stagingArea { mods = path : (mods stagingArea) }
+                                       2 -> stagingArea { dels = path : (dels stagingArea) }
+                                       _   -> error "undefined flag"
     HIO.writeStagingArea updatedStagingArea
 
 -- | Writes the staging area as a commit to disk. Currently takes a
 -- | single parameter of a message.
-commit :: [String] -> IO ()
-commit args = do
+commit :: Maybe String -> IO ()
+commit maybeMessage = do
     now <- fmap (toGregorian . utctDay) getCurrentTime
     parentHash <- return Default.def -- TODO
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
     config <- HIO.loadConfig
+    let message = fromMaybe "default message" maybeMessage
     -- TODO: coalesce commit-creation somehow?
     let hashlessCommit = Commit {
         author                  = userInfo config
@@ -166,9 +161,6 @@ commit args = do
         ++ "0" ++ " deletions(-)"
 
     where
-        message :: String
-        message = head args -- TODO
-
         -- TODO: where does this go?
         hashCommit :: Commit -> Hash
         hashCommit
@@ -182,35 +174,19 @@ commit args = do
         getStagedDiff stagingArea = return Default.def
 
 -- | Sets all tracked files to their state in the specified
--- | commit / branch / tag.
-checkout :: [String] -> IO ()
-checkout args@(commitHash:[]) = do
-    soughtCommit <- HIO.loadCommit . stringToHash $ commitHash
+-- | TODO: ref
+checkout :: String -> IO ()
+checkout ref = do
+    soughtCommit <- HIO.loadCommit . stringToHash $ ref
     putStrLn $ "running command \"checkout\" with args "
-    print args
+    print ref
     print soughtCommit
     -- TODO
 
--- | The `diff` command. With no arguments, prints the difference
--- | between *unstaged* changes in the working directory and HEAD.
--- | With other arguments, does other stuff (TODO).
-diff :: [String] -> IO ()
-diff args = do
-    putStrLn $ "running command \"diff\" with args "
-    print args
-
--- | Prints the history from the current commit to the first commit
--- | in the repository.
-log :: [String] -> IO ()
-log args = do
-    putStrLn $ "running command \"log\" with args "
-    print args
-
 -- | Shows the specified commit. With no arguments, assumes a single
 -- | argument of HEAD.
-hshow :: [String] -> IO ()
-hshow (commitHash:[]) =
-    ( HIO.loadCommit
-    . stringToHash
-    $ commitHash )
-        >>= print
+hshow :: Maybe String -> IO ()
+hshow maybeRef = do
+    headHash <- headHash <$> HIO.loadHead
+    let ref = fromMaybe headHash (stringToHash <$> maybeRef)
+    ( HIO.loadCommit ref ) >>= print

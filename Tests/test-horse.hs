@@ -55,27 +55,26 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
 
 testInit :: Test
 testInit = TestCase $ do
-    Porcelain.init []
+    Porcelain.init
     rootDirectoryCreated <- Dir.doesDirectoryExist Filesys.rootPath
     assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
 
 testAddAndRm :: Test
 testAddAndRm = TestCase $ do
-    Porcelain.init []
+    Porcelain.init
 
     let addedFile = "a"
     handle <- IO.openFile addedFile IO.WriteMode
     IO.hPutStr handle "a"
     IO.hClose handle
 
-    Porcelain.stage [addedFile] Porcelain.Add
+    Porcelain.stage addedFile
 
     stagingArea <- HIO.loadStagingArea
 
     assertEqual "Should only have staged addition of the added file; no more; no less. " [addedFile] (adds stagingArea)
     assertEqual "Should not have staged modifications of files. " [] (mods stagingArea)
     assertEqual "Should not have staged deletions of files. " [] (dels stagingArea)
-
 
     -- rm stuff
     -- how does Git handle adding and rming the same file?

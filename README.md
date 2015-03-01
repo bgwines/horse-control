@@ -1,5 +1,5 @@
 # horse-control
-A version control system! (Currently totally in progress)
+Version control, written in Haskell with all that monadic goodness! (Currently totally in progress)
 
 [![Build Status](https://travis-ci.org/bgwines/horse-control.svg?branch=master)](https://travis-ci.org/bgwines/horse-control)
 

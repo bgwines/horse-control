@@ -30,7 +30,7 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Data.Maybe (fromJust)
+
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)

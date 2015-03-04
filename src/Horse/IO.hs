@@ -42,7 +42,7 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Data.Maybe (fromJust)
+
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -94,14 +94,14 @@ writeHead = writeToFile Filesys.headPath
 
 -- * commits
 
--- TODO: error propagation
 -- | Loads the commit with the given hash from the database
-loadCommit :: Hash -> IO Commit
+loadCommit :: Hash -> IO (Maybe Commit)
 loadCommit key = do
     db <- DB.open Filesys.commitsPath Default.def
-    commit <- DB.get db Default.def key
+    maybeCommit <- DB.get db Default.def key
     DBInternal.unsafeClose db
-    return $ fromRight . Serialize.decode . fromJust $ commit
+    -- TODO: something more monadic instead of fromRight
+    return $ (fromRight . Serialize.decode) <$> maybeCommit
 
 -- | Writes the commit with the given hash to the database
 writeCommit :: Commit -> Hash -> IO ()

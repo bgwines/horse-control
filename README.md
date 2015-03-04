@@ -26,3 +26,8 @@ Differences with Git
 
 * `horse rebase` acts like `git rebase -p`
 * `horse pull` acts like `git pull --rebase=preserve-merges`
+
+Thanksto
+--------
+
+* https://robots.thoughtbot.com/applicative-options-parsing-in-haskell

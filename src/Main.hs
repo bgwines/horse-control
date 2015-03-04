@@ -19,6 +19,7 @@ data Command
     | Commit (Maybe String)
     | Checkout String
     | Show (Maybe String)
+    | Log (Maybe String) (Maybe Int)
 
 parseInit :: Parser Command
 parseInit = pure Init
@@ -55,6 +56,19 @@ parseCheckout = Checkout <$> (argument str $ metavar "REF")
 parseShow :: Parser Command
 parseShow = Show <$> (optional $ strOption (metavar "REF"))
 
+parseLog :: Parser Command
+parseLog = Log
+     <$> (optional $ argument str
+            ( metavar "REF"
+            <> help "Ref from which to print log." )
+         )
+     <*> (optional $ option auto
+            ( long "length"
+            <> short 'n'
+            <> metavar "HISTORY-LENGTH"
+            <> help "Number of commits to display in history." )
+         )
+
 parseCommand :: Parser Command
 parseCommand = subparser
     $  command "init"     (parseInit     `withInfo` initHelpMessage)
@@ -64,6 +78,7 @@ parseCommand = subparser
     <> command "commit"   (parseCommit   `withInfo` commitHelpMessage)
     <> command "checkout" (parseCheckout `withInfo` checkoutHelpMessage)
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
+    <> command "log"      (parseLog      `withInfo` logHelpMessage)
     where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -86,6 +101,9 @@ parseCommand = subparser
         showHelpMessage :: String
         showHelpMessage = "Print the specified ref"
 
+        logHelpMessage :: String
+        logHelpMessage = "Print the commit history"
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
@@ -99,6 +117,7 @@ run cmd = do
         Commit message     -> Porcelain.commit message
         Checkout ref       -> Porcelain.checkout ref
         Show ref           -> Porcelain.hshow ref
+        Log ref n          -> Porcelain.log ref n
 
 main :: IO ()
 main = run =<< execParser

@@ -11,6 +11,7 @@ module Horse.Commands.Porcelain
 , Horse.Commands.Porcelain.checkout
 , Horse.Commands.Porcelain.commit
 , Horse.Commands.Porcelain.hshow
+, Horse.Commands.Porcelain.log
 ) where
 
 -- imports
@@ -18,6 +19,9 @@ module Horse.Commands.Porcelain
 import Prelude hiding (init, log)
 
 import GHC.Generics
+
+import Control.Monad
+import Control.Monad.Trans.Maybe
 
 -- qualified imports
 
@@ -38,15 +42,16 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
+import Data.Generics.Aliases (orElse)
+
 import Text.Printf (printf)
 
-import Control.Monad ((>>=), return, when, unless, mapM_)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
@@ -57,6 +62,25 @@ import Horse.Types
 import qualified Horse.IO as HIO
 import qualified Horse.Filesys as Filesys
 import qualified Horse.Commands.Plumbing as Plumbing
+
+unfoldrM :: Monad m => (b -> m (Maybe (a, b))) -> b -> m [a]
+unfoldrM f b = do
+    res <- f b
+    case res of
+        Just (a, b') -> do
+            bs <- unfoldrM f b'
+            return $ a : bs
+        Nothing -> return []
+
+myUnfoldrM :: Monad m => (a -> m (Maybe a)) -> a -> m [a]
+myUnfoldrM f v = (v:) `liftM` unfoldrM (liftM (fmap tuplefy) . f) v
+    where tuplefy x = (x,x)
+
+---------------------------------------
+
+-- TODO: put this somewhere
+fromMaybe' :: (Maybe a) -> a -> a
+fromMaybe' = flip fromMaybe
 
 -- | Sets user-specific configuration information.
 config :: Maybe String -> Maybe Email -> IO ()
@@ -126,7 +150,8 @@ stage path = do
 commit :: Maybe String -> IO ()
 commit maybeMessage = do
     now <- fmap (toGregorian . utctDay) getCurrentTime
-    parentHash <- return Default.def -- TODO
+    parent <- (headHash <$> HIO.loadHead) >>= HIO.loadCommit
+    putStrLn $ "parent: " ++ (show parent)
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
     config <- HIO.loadConfig
     let message = fromMaybe "default message" maybeMessage
@@ -136,9 +161,7 @@ commit maybeMessage = do
         , date                  = now
         , hash                  = Default.def -- no hash yet since commit
                                               -- hasn't been created
-        , parentHash            = parentHash
-        , secondaryParentHash   = Default.def -- not a merge commit, so
-                                              -- no secondary parent
+        , parentHash            = hash <$> parent
         , diffWithPrimaryParent = stagedDiff
         , message               = message }
 
@@ -190,3 +213,29 @@ hshow maybeRef = do
     headHash <- headHash <$> HIO.loadHead
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
     ( HIO.loadCommit ref ) >>= print
+
+log :: Maybe String -> Maybe Int -> IO ()
+log maybeRef maybeNumCommits = do
+    headHash <- headHash <$> HIO.loadHead
+    let ref = fromMaybe headHash (stringToHash <$> maybeRef)
+    maybeCommit <- HIO.loadCommit ref
+
+    when (isJust maybeCommit) $ do
+        let commit = fromJust maybeCommit
+
+        history <- loadHistory maybeNumCommits commit
+        print $ message <$> history
+    where
+        -- myUnfoldrM :: Monad m => (a -> m (Maybe a)) -> a -> m [a]
+        loadHistory :: Maybe Int -> Commit -> IO [Commit]
+        loadHistory maybeNumCommits commit
+            = myUnfoldrM loadParent commit
+
+        loadParent :: Commit -> IO (Maybe Commit)
+        loadParent commit =
+            if isJust $ parentHash commit
+                then HIO.loadCommit
+                    . fromJust
+                    . parentHash
+                    $ commit
+                else return Nothing

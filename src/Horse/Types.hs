@@ -49,7 +49,7 @@ import Data.Serialize (Serialize)
 import Data.Default (Default, def)
 import Data.ByteString (ByteString, empty, pack)
 
-import Data.Maybe (fromJust)
+
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -95,8 +95,7 @@ data Commit = Commit {
     author :: UserInfo,
     date :: Date,
     hash :: Hash,
-    parentHash :: Hash,
-    secondaryParentHash :: Maybe Hash,
+    parentHash :: Maybe Hash,
     diffWithPrimaryParent :: Diff,
     message :: String
 } deriving (Eq, Show, Generic)

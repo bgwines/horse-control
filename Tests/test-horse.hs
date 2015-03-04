@@ -26,7 +26,7 @@ import Text.Printf (printf)
 
 import System.Exit (exitSuccess)
 
-import Data.Maybe (fromJust)
+
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)

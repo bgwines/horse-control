@@ -5,6 +5,8 @@ module Main where
 import Test.HUnit
 import Test.QuickCheck
 
+import Control.Monad.Trans.Either
+
 -- qualified imports
 
 import qualified System.IO as IO
@@ -41,7 +43,6 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 
 import qualified Horse.IO as HIO
-import qualified Horse.Filesys as Filesys
 import qualified Horse.Commands.Porcelain as Porcelain
 
 getTestDirectory :: IO FilePath
@@ -55,26 +56,35 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
 
 testInit :: Test
 testInit = TestCase $ do
-    Porcelain.init
-    rootDirectoryCreated <- Dir.doesDirectoryExist Filesys.rootPath
+    runEitherT Porcelain.init
+    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
     assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
 
 testAddAndRm :: Test
 testAddAndRm = TestCase $ do
-    Porcelain.init
+    runEitherT Porcelain.init
 
     let addedFile = "a"
     handle <- IO.openFile addedFile IO.WriteMode
     IO.hPutStr handle "a"
     IO.hClose handle
 
-    Porcelain.stage addedFile
+    runEitherT $ Porcelain.stage addedFile
 
-    stagingArea <- HIO.loadStagingArea
+    stagingArea <- runEitherT HIO.loadStagingArea
 
-    assertEqual "Should only have staged addition of the added file; no more; no less. " [addedFile] (adds stagingArea)
-    assertEqual "Should not have staged modifications of files. " [] (mods stagingArea)
-    assertEqual "Should not have staged deletions of files. " [] (dels stagingArea)
+    assertEqual
+        "Should only have staged addition of the added file; no more; no less. "
+        (Right [addedFile])
+        (adds <$> stagingArea)
+    assertEqual
+        "Should not have staged modifications of files. "
+        (Right [])
+        (mods <$> stagingArea)
+    assertEqual
+        "Should not have staged deletions of files. "
+        (Right [])
+        (dels <$> stagingArea)
 
     -- rm stuff
     -- how does Git handle adding and rming the same file?

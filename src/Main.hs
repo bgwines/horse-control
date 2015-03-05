@@ -5,9 +5,10 @@ import System.Environment
 import System.Exit
 
 import qualified Horse.Types as Types
-import qualified Horse.Filesys as Filesys
 import qualified Horse.Commands.Plumbing as Plumbing
 import qualified Horse.Commands.Porcelain as Porcelain
+
+import Control.Monad.Trans.Either
 
 import Options.Applicative
 
@@ -109,7 +110,7 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 run :: Command -> IO ()
 run cmd = do
-    case cmd of
+    runEitherT $ case cmd of
         Init               -> Porcelain.init
         Config name email  -> Porcelain.config name email
         Status             -> Porcelain.status
@@ -118,6 +119,7 @@ run cmd = do
         Checkout ref       -> Porcelain.checkout ref
         Show ref           -> Porcelain.hshow ref
         Log ref n          -> Porcelain.log ref n
+    return ()
 
 main :: IO ()
 main = run =<< execParser

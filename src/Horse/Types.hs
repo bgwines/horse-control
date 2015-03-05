@@ -17,6 +17,7 @@ module Horse.Types(
 , Hash
 , Diff
 , Date
+, Error
 
 -- * constructors
 , stringToHash
@@ -49,7 +50,6 @@ import Data.Serialize (Serialize)
 import Data.Default (Default, def)
 import Data.ByteString (ByteString, empty, pack)
 
-
 import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -60,6 +60,9 @@ import Text.Printf (printf)
 import Control.Monad ((>>=), return)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
+
+-- | Error type
+type Error = String
 
 -- | An e-mail.
 type Email = String

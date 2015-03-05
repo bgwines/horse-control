@@ -22,6 +22,7 @@ import GHC.Generics
 
 import Control.Monad
 import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.Either
 
 -- qualified imports
 
@@ -60,9 +61,9 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 
 import qualified Horse.IO as HIO
-import qualified Horse.Filesys as Filesys
 import qualified Horse.Commands.Plumbing as Plumbing
 
+-- TODO: library
 unfoldrM :: Monad m => (b -> m (Maybe (a, b))) -> b -> m [a]
 unfoldrM f b = do
     res <- f b
@@ -78,18 +79,14 @@ myUnfoldrM f v = (v:) `liftM` unfoldrM (liftM (fmap tuplefy) . f) v
 
 ---------------------------------------
 
--- TODO: put this somewhere
-fromMaybe' :: (Maybe a) -> a -> a
-fromMaybe' = flip fromMaybe
-
 -- | Sets user-specific configuration information.
-config :: Maybe String -> Maybe Email -> IO ()
+config :: Maybe String -> Maybe Email -> EitherT Error IO ()
 config maybeName maybeEmail = do
-    configPath <- Filesys.getConfigPath
-    configFileExistedBefore <- Dir.doesFileExist configPath
+    configPath <- HIO.getConfigPath
+    configFileExistedBefore <- liftIO $ Dir.doesFileExist configPath
 
     unless configFileExistedBefore $ do
-        Filesys.createFileWithContents (configPath, ByteString.empty) -- TODO
+        HIO.createFileWithContents (configPath, ByteString.empty) -- TODO
 
         let userInfo = UserInfo {
               name = fromMaybe Default.def maybeName
@@ -105,37 +102,35 @@ config maybeName maybeEmail = do
 
 -- | Initializes an empty repository in the current directory. If
 -- | one currently exists, it aborts.
-init :: IO ()
+init :: EitherT Error IO ()
 init = do
-    repositoryAlreadyExists <- Dir.doesDirectoryExist Filesys.rootPath
+    repositoryAlreadyExists <- liftIO $ Dir.doesDirectoryExist HIO.rootPath
 
     when repositoryAlreadyExists
-        $ putStrLn "Error: repository already exists"
+        $ liftIO . putStrLn $ "Error: repository already exists"
 
     unless repositoryAlreadyExists $ do
-        mapM_ Filesys.destructivelyCreateDirectory Filesys.directories
+        mapM_ HIO.destructivelyCreateDirectory HIO.directories
 
         -- should close these DB handles?
-        sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) Filesys.databasePaths
+        liftIO . sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) HIO.databasePaths
 
-        sequence $ map Filesys.createFileWithContents Filesys.serializationPathsAndInitialContents
+        sequence $ map HIO.createFileWithContents HIO.serializationPathsAndInitialContents
 
-        currDir <- Dir.getCurrentDirectory
-        putStrLn $ "Initialized existing horse-control repository in"
-            ++ currDir ++ "/" ++ Filesys.rootPath
-
-        return ()
+        currDir <- liftIO Dir.getCurrentDirectory
+        liftIO . putStrLn $ "Initialized existing horse-control repository in"
+            ++ currDir ++ "/" ++ HIO.rootPath
 
 -- | Prints the difference between the working directory and HEAD
 -- TODO: check initialization has happened (all functions should do this)
-status :: IO ()
+status :: EitherT Error IO ()
 status = do
     stagingArea <- HIO.loadStagingArea
-    print stagingArea
+    liftIO . print $ stagingArea
 
 -- | Adds the specified modification / addition / deletion of the
 -- | specified file to the staging area
-stage :: String -> IO ()
+stage :: String -> EitherT Error IO ()
 stage path = do
     stagingArea <- HIO.loadStagingArea
 
@@ -147,11 +142,11 @@ stage path = do
 
 -- | Writes the staging area as a commit to disk. Currently takes a
 -- | single parameter of a message.
-commit :: Maybe String -> IO ()
+commit :: Maybe String -> EitherT Error IO ()
 commit maybeMessage = do
-    now <- fmap (toGregorian . utctDay) getCurrentTime
+    now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
     parent <- (headHash <$> HIO.loadHead) >>= HIO.loadCommit
-    putStrLn $ "parent: " ++ (show parent)
+    liftIO . putStrLn $ "parent: " ++ (show parent)
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
     config <- HIO.loadConfig
     let message = fromMaybe "default message" maybeMessage
@@ -161,7 +156,7 @@ commit maybeMessage = do
         , date                  = now
         , hash                  = Default.def -- no hash yet since commit
                                               -- hasn't been created
-        , parentHash            = hash <$> parent
+        , parentHash            = Just $ hash parent
         , diffWithPrimaryParent = stagedDiff
         , message               = message }
 
@@ -175,12 +170,12 @@ commit maybeMessage = do
     HIO.writeStagingArea (Default.def :: StagingArea)
 
     -- debug code; can delete
-    putStrLn "Testing writing of commit: loading written commit: "
-    (HIO.loadCommit commitHash) >>= print
+    liftIO . putStrLn $ "Testing writing of commit: loading written commit: "
+    (HIO.loadCommit commitHash) >>= (liftIO . print)
 
-    putStrLn $ "[<branch> " ++ (show . ByteString.take 8 $ commitHash)
+    liftIO . putStrLn $ "[<branch> " ++ (show . ByteString.take 8 $ commitHash)
         ++  "] " ++ message
-    putStrLn $ "0" ++ " files changed, " ++ "0" ++ " insertions(+), "
+    liftIO . putStrLn $ "0" ++ " files changed, " ++ "0" ++ " insertions(+), "
         ++ "0" ++ " deletions(-)"
 
     where
@@ -193,49 +188,52 @@ commit maybeMessage = do
             . Serialize.encode
 
         -- TODO
-        getStagedDiff :: StagingArea -> IO Diff
+        getStagedDiff :: StagingArea -> EitherT Error IO Diff
         getStagedDiff stagingArea = return Default.def
 
 -- | Sets all tracked files to their state in the specified
 -- | TODO: ref
-checkout :: String -> IO ()
+checkout :: String -> EitherT Error IO ()
 checkout ref = do
     soughtCommit <- HIO.loadCommit . stringToHash $ ref
-    putStrLn $ "running command \"checkout\" with args "
-    print ref
-    print soughtCommit
+    liftIO . putStrLn $ "running command \"checkout\" with args "
+    liftIO . print $ ref
+    liftIO . print $ soughtCommit
     -- TODO
 
 -- | Shows the specified commit. With no arguments, assumes a single
 -- | argument of HEAD.
-hshow :: Maybe String -> IO ()
+hshow :: Maybe String -> EitherT Error IO ()
 hshow maybeRef = do
     headHash <- headHash <$> HIO.loadHead
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
-    ( HIO.loadCommit ref ) >>= print
+    ( HIO.loadCommit ref ) >>= (liftIO . print)
 
-log :: Maybe String -> Maybe Int -> IO ()
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left e) = Nothing
+eitherToMaybe (Right x) = Just x
+
+log :: Maybe String -> Maybe Int -> EitherT Error IO ()
 log maybeRef maybeNumCommits = do
     headHash <- headHash <$> HIO.loadHead
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
-    maybeCommit <- HIO.loadCommit ref
-
-    when (isJust maybeCommit) $ do
-        let commit = fromJust maybeCommit
-
-        history <- loadHistory maybeNumCommits commit
-        print $ message <$> history
+    commit <- HIO.loadCommit ref
+    history <- loadHistory maybeNumCommits commit
+    (liftIO . print) $ message <$> history
     where
         -- myUnfoldrM :: Monad m => (a -> m (Maybe a)) -> a -> m [a]
-        loadHistory :: Maybe Int -> Commit -> IO [Commit]
+        loadHistory :: Maybe Int -> Commit -> EitherT Error IO [Commit]
         loadHistory maybeNumCommits commit
-            = myUnfoldrM loadParent commit
+            = liftIO
+            $ myUnfoldrM
+                (fmap eitherToMaybe . runEitherT . loadParent)
+                commit
 
-        loadParent :: Commit -> IO (Maybe Commit)
+        loadParent :: Commit -> EitherT Error IO Commit
         loadParent commit =
             if isJust $ parentHash commit
                 then HIO.loadCommit
                     . fromJust
                     . parentHash
                     $ commit
-                else return Nothing
+                else left $ "No parent for commit with hash " ++ (show . hash $ commit)

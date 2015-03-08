@@ -89,9 +89,6 @@ testAddAndRm = TestCase $ do
     -- rm stuff
     -- how does Git handle adding and rming the same file?
 
-testPlumbing :: Test
-testPlumbing = TestList []
-
 testPorcelain :: Test
 testPorcelain = TestList
     [ TestLabel "horse init" testInit
@@ -103,7 +100,6 @@ main = do
     Dir.createDirectory testDirectory
     Dir.setCurrentDirectory testDirectory
 
-    runTestTT testPlumbing
     runTestTT testPorcelain
 
     Dir.setCurrentDirectory ".."

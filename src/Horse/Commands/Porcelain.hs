@@ -53,6 +53,7 @@ import Data.Generics.Aliases (orElse)
 
 import Text.Printf (printf)
 
+import Control.Monad.Extra (iterateMaybeM)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
@@ -61,23 +62,7 @@ import Control.Monad.IO.Class (liftIO)
 import Horse.Types
 
 import qualified Horse.IO as HIO
-import qualified Horse.Commands.Plumbing as Plumbing
-
--- TODO: library
-unfoldrM :: Monad m => (b -> m (Maybe (a, b))) -> b -> m [a]
-unfoldrM f b = do
-    res <- f b
-    case res of
-        Just (a, b') -> do
-            bs <- unfoldrM f b'
-            return $ a : bs
-        Nothing -> return []
-
-myUnfoldrM :: Monad m => (a -> m (Maybe a)) -> a -> m [a]
-myUnfoldrM f v = (v:) `liftM` unfoldrM (liftM (fmap tuplefy) . f) v
-    where tuplefy x = (x,x)
-
----------------------------------------
+import qualified Horse.Utils as Utils
 
 -- | Sets user-specific configuration information.
 config :: Maybe String -> Maybe Email -> EitherT Error IO ()
@@ -125,8 +110,7 @@ init = do
 -- TODO: check initialization has happened (all functions should do this)
 status :: EitherT Error IO ()
 status = do
-    stagingArea <- HIO.loadStagingArea
-    liftIO . print $ stagingArea
+    HIO.loadStagingArea >>= (liftIO . print)
 
 -- | Adds the specified modification / addition / deletion of the
 -- | specified file to the staging area
@@ -191,7 +175,7 @@ commit maybeMessage = do
         getStagedDiff :: StagingArea -> EitherT Error IO Diff
         getStagedDiff stagingArea = return Default.def
 
--- | Sets all tracked files to their state in the specified
+-- | Sets all tracked files to their state in the specified commit
 -- | TODO: ref
 checkout :: String -> EitherT Error IO ()
 checkout ref = do
@@ -209,10 +193,7 @@ hshow maybeRef = do
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
     ( HIO.loadCommit ref ) >>= (liftIO . print)
 
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left e) = Nothing
-eitherToMaybe (Right x) = Just x
-
+-- | Prints the history from the current commit backwards
 log :: Maybe String -> Maybe Int -> EitherT Error IO ()
 log maybeRef maybeNumCommits = do
     headHash <- headHash <$> HIO.loadHead
@@ -221,12 +202,11 @@ log maybeRef maybeNumCommits = do
     history <- loadHistory maybeNumCommits commit
     (liftIO . print) $ message <$> history
     where
-        -- myUnfoldrM :: Monad m => (a -> m (Maybe a)) -> a -> m [a]
         loadHistory :: Maybe Int -> Commit -> EitherT Error IO [Commit]
         loadHistory maybeNumCommits commit
             = liftIO
-            $ myUnfoldrM
-                (fmap eitherToMaybe . runEitherT . loadParent)
+            $ iterateMaybeM
+                (fmap Utils.eitherToMaybe . runEitherT . loadParent)
                 commit
 
         loadParent :: Commit -> EitherT Error IO Commit

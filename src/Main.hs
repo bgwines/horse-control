@@ -5,7 +5,6 @@ import System.Environment
 import System.Exit
 
 import qualified Horse.Types as Types
-import qualified Horse.Commands.Plumbing as Plumbing
 import qualified Horse.Commands.Porcelain as Porcelain
 
 import Control.Monad.Trans.Either

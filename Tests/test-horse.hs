@@ -28,9 +28,6 @@ import Text.Printf (printf)
 
 import System.Exit (exitSuccess)
 
-
-import Data.Either.Unwrap (fromLeft, fromRight)
-
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
@@ -56,13 +53,13 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
 
 testInit :: Test
 testInit = TestCase $ do
-    runEitherT Porcelain.init
+    Porcelain.init
     rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
     assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
 
 testAddAndRm :: Test
 testAddAndRm = TestCase $ do
-    runEitherT Porcelain.init
+    Porcelain.init
 
     let addedFile = "a"
     handle <- IO.openFile addedFile IO.WriteMode
@@ -71,20 +68,20 @@ testAddAndRm = TestCase $ do
 
     runEitherT $ Porcelain.stage addedFile
 
-    stagingArea <- runEitherT HIO.loadStagingArea
+    eitherStagingArea <- runEitherT HIO.loadStagingArea
 
     assertEqual
         "Should only have staged addition of the added file; no more; no less. "
         (Right [addedFile])
-        (adds <$> stagingArea)
+        (adds <$> eitherStagingArea)
     assertEqual
         "Should not have staged modifications of files. "
         (Right [])
-        (mods <$> stagingArea)
+        (mods <$> eitherStagingArea)
     assertEqual
         "Should not have staged deletions of files. "
         (Right [])
-        (dels <$> stagingArea)
+        (dels <$> eitherStagingArea)
 
     -- rm stuff
     -- how does Git handle adding and rming the same file?

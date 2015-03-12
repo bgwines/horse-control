@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 
 Library
   Exposed-Modules: Horse.Commands.Porcelain, Horse.Types, Horse.IO, Horse.Utils
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring, data-default, either-unwrap, hex, convertible, optparse-applicative, syb, mtl, EitherT, monad-extras
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -26,12 +26,12 @@ executable horse
   main-is:             Main.hs
   -- other-modules:    Horse.Commands.Porcelain, Horse.Types, Horse.IO, Horse.Utils
   -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring, data-default, either-unwrap, hex, convertible, optparse-applicative, syb, mtl, EitherT, monad-extras
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras
   hs-source-dirs:      src
   default-language:    Haskell2010
 
 Test-Suite test-horse
     type:       exitcode-stdio-1.0
     main-is:    Tests/test-horse.hs
-    build-depends: base >=4.7 && <4.8, QuickCheck, horse-control, HUnit, directory, leveldb-haskell, time, cereal, transformers, cryptohash, bytestring, data-default, either-unwrap, hex, convertible, optparse-applicative, syb, mtl, EitherT, monad-extras
+    build-depends: base >=4.7 && <4.8, QuickCheck, horse-control, HUnit, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras
     default-language:    Haskell2010

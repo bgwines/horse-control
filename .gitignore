@@ -2,3 +2,5 @@ dist/
 *~
 *#
 *.horse
+.cabal-sandbox
+cabal.sandbox.config

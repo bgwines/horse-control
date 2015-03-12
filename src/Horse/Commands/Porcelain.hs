@@ -39,36 +39,38 @@ import qualified Data.ByteString as ByteString
 import qualified Crypto.Hash.SHA256 as SHA256
 
 import qualified Database.LevelDB.Base as DB
-import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
-import Data.Either.Unwrap (fromLeft, fromRight)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
-import Data.Generics.Aliases (orElse)
 
-import Text.Printf (printf)
 
-import Control.Monad.Extra (iterateMaybeM)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
 -- horse-control imports
 
 import Horse.Types
+import Horse.Utils (stringToHash, (|<$>|))
 
 import qualified Horse.IO as HIO
-import qualified Horse.Utils as Utils
+
+-- prefers the Maybe to the Either
+fromEitherMaybeDefault :: (Default.Default b) => Either a b -> Maybe b -> b
+fromEitherMaybeDefault (Left  _) Nothing  = Default.def
+fromEitherMaybeDefault (Right x) Nothing  = x
+fromEitherMaybeDefault (Left  _) (Just y) = y
+fromEitherMaybeDefault (Right _) (Just y) = y
 
 -- | Sets user-specific configuration information.
-config :: Maybe String -> Maybe Email -> EitherT Error IO ()
+config :: Maybe String -> Maybe Email -> IO ()
 config maybeName maybeEmail = do
     configPath <- HIO.getConfigPath
-    configFileExistedBefore <- liftIO $ Dir.doesFileExist configPath
+    configFileExistedBefore <- Dir.doesFileExist configPath
 
     unless configFileExistedBefore $ do
         HIO.createFileWithContents (configPath, ByteString.empty) -- TODO
@@ -79,31 +81,35 @@ config maybeName maybeEmail = do
         HIO.writeConfig $ Config { userInfo = userInfo }
 
     when configFileExistedBefore $ do
-        userInfo <- userInfo <$> HIO.loadConfig
+        eitherUserInfo <- runEitherT $ userInfo <$> HIO.loadConfig
         let updatedUserInfo = UserInfo {
-              name = fromMaybe (name userInfo) maybeName
-            , email = fromMaybe (email userInfo) maybeEmail }
+              name = fromEitherMaybeDefault
+                (name <$> eitherUserInfo)
+                maybeName
+            , email = fromEitherMaybeDefault
+                (email <$> eitherUserInfo)
+                maybeEmail }
         HIO.writeConfig $ Config { userInfo = updatedUserInfo }
 
 -- | Initializes an empty repository in the current directory. If
 -- | one currently exists, it aborts.
-init :: EitherT Error IO ()
+init :: IO ()
 init = do
-    repositoryAlreadyExists <- liftIO $ Dir.doesDirectoryExist HIO.rootPath
+    repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.rootPath
 
     when repositoryAlreadyExists
-        $ liftIO . putStrLn $ "Error: repository already exists"
+        $ putStrLn $ "Error: repository already exists"
 
     unless repositoryAlreadyExists $ do
         mapM_ HIO.destructivelyCreateDirectory HIO.directories
 
         -- should close these DB handles?
-        liftIO . sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) HIO.databasePaths
+        sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) HIO.databasePaths
 
         sequence $ map HIO.createFileWithContents HIO.serializationPathsAndInitialContents
 
-        currDir <- liftIO Dir.getCurrentDirectory
-        liftIO . putStrLn $ "Initialized existing horse-control repository in"
+        currDir <- Dir.getCurrentDirectory
+        putStrLn $ "Initialized existing horse-control repository in"
             ++ currDir ++ "/" ++ HIO.rootPath
 
 -- | Prints the difference between the working directory and HEAD
@@ -122,7 +128,7 @@ stage path = do
                                        1 -> stagingArea { mods = path : (mods stagingArea) }
                                        2 -> stagingArea { dels = path : (dels stagingArea) }
                                        _   -> error "undefined flag"
-    HIO.writeStagingArea updatedStagingArea
+    liftIO $ HIO.writeStagingArea updatedStagingArea
 
 -- | Writes the staging area as a commit to disk. Currently takes a
 -- | single parameter of a message.
@@ -130,7 +136,6 @@ commit :: Maybe String -> EitherT Error IO ()
 commit maybeMessage = do
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
     parent <- (headHash <$> HIO.loadHead) >>= HIO.loadCommit
-    liftIO . putStrLn $ "parent: " ++ (show parent)
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
     config <- HIO.loadConfig
     let message = fromMaybe "default message" maybeMessage
@@ -147,11 +152,11 @@ commit maybeMessage = do
     let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
-    HIO.writeCommit completeCommit commitHash
+    liftIO $ HIO.writeCommit completeCommit commitHash
 
-    HIO.writeHead $ Head { headHash = commitHash }
+    liftIO . HIO.writeHead $ Head { headHash = commitHash }
 
-    HIO.writeStagingArea (Default.def :: StagingArea)
+    liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
 
     -- debug code; can delete
     liftIO . putStrLn $ "Testing writing of commit: loading written commit: "
@@ -197,23 +202,8 @@ hshow maybeRef = do
 log :: Maybe String -> Maybe Int -> EitherT Error IO ()
 log maybeRef maybeNumCommits = do
     headHash <- headHash <$> HIO.loadHead
-    let ref = fromMaybe headHash (stringToHash <$> maybeRef)
+    let ref = maybe headHash stringToHash maybeRef
     commit <- HIO.loadCommit ref
-    history <- loadHistory maybeNumCommits commit
+    history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
     (liftIO . print) $ message <$> history
-    where
-        loadHistory :: Maybe Int -> Commit -> EitherT Error IO [Commit]
-        loadHistory maybeNumCommits commit
-            = liftIO
-            $ iterateMaybeM
-                (fmap Utils.eitherToMaybe . runEitherT . loadParent)
-                commit
 
-        loadParent :: Commit -> EitherT Error IO Commit
-        loadParent commit =
-            if isJust $ parentHash commit
-                then HIO.loadCommit
-                    . fromJust
-                    . parentHash
-                    $ commit
-                else left $ "No parent for commit with hash " ++ (show . hash $ commit)

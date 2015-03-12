@@ -1,3 +1,5 @@
+{-# LANGUAGE PackageImports #-}
+
 -- | Module for writing and reading from disk / the database
 module Horse.IO
 ( -- * staging area
@@ -32,55 +34,48 @@ module Horse.IO
 -- * utility functions
 , createFileWithContents
 , destructivelyCreateDirectory
+
+-- * assorted
+, loadHistory
+, loadParent
 ) where
 
 -- imports
 
-import Prelude hiding (show, init, log)
-
-import GHC.Generics
+import Prelude hiding (init, log)
 
 import Control.Monad.Trans.Either
 
 -- qualified imports
 
-import qualified Data.Convertible as Convert
-
 import qualified System.IO as IO
 import qualified System.Directory as Dir
 
-import qualified Data.Hex as Hex
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as ByteString
-
-import qualified Crypto.Hash.SHA256 as SHA256
 
 import qualified Database.LevelDB.Base as DB
 import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Data.Either.Unwrap (fromLeft, fromRight)
+import Data.Maybe (isJust, fromJust)
 
-import Data.Time.Clock (getCurrentTime, utctDay)
-import Data.Time.Calendar (toGregorian)
-
-import Text.Printf (printf)
-
+import Control.Applicative ((<$>))
 import Control.Monad ((>>=), return)
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad.IO.Class (liftIO)
+import "monad-extras" Control.Monad.Extra (iterateMaybeM)
+import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
 -- horse-control imports
 
 import Horse.Types
+import Horse.Utils (maybeToEither, eitherToMaybe, stringToHash)
 
 -- | Writes a serializable object to a file
-writeToFile :: (Serialize.Serialize a) => FilePath -> a -> EitherT Error IO ()
+writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
 writeToFile filepath
-    = liftIO
-    . ByteString.writeFile filepath
+    = ByteString.writeFile filepath
     . Serialize.encode
 
 -- | Loads a serializable object from a file
@@ -94,7 +89,7 @@ loadStagingArea :: EitherT Error IO StagingArea
 loadStagingArea = loadFromFile stagingAreaPath
 
 -- | Writes the staging area to disk
-writeStagingArea :: StagingArea -> EitherT Error IO ()
+writeStagingArea :: StagingArea -> IO ()
 writeStagingArea = writeToFile stagingAreaPath
 
 -- * HEAD
@@ -104,26 +99,25 @@ loadHead :: EitherT Error IO Head
 loadHead = loadFromFile headPath
 
 -- | Writes the object representing HEAD to disk
-writeHead :: Head -> EitherT Error IO ()
+writeHead :: Head -> IO ()
 writeHead = writeToFile headPath
 
 -- * commits
 
-maybeToEither :: Maybe b -> Either Error b
-maybeToEither Nothing = Left "Maybe conversion was from Nothing"
-maybeToEither (Just x) = Right x
-
 -- | Loads the commit with the given hash from the database
 loadCommit :: Hash -> EitherT Error IO Commit
 loadCommit key = do
-    db <- liftIO $ DB.open commitsPath Default.def
-    maybeCommit <- liftIO $ DB.get db Default.def key
-    liftIO $ DBInternal.unsafeClose db
-    EitherT . return $ (maybeToEither maybeCommit) >>= Serialize.decode
+    maybeCommit <- liftIO $ do
+        db <- DB.open commitsPath Default.def
+        maybeCommit <- DB.get db Default.def key
+        DBInternal.unsafeClose db
+        return maybeCommit
+    commit <- hoistEither $ maybeToEither maybeCommit
+    hoistEither $ Serialize.decode commit
 
 -- | Writes the commit with the given hash to the database
-writeCommit :: Commit -> Hash -> EitherT Error IO ()
-writeCommit commit key = liftIO $ do
+writeCommit :: Commit -> Hash -> IO ()
+writeCommit commit key = do
     db <- DB.open commitsPath Default.def
     DB.put db Default.def key (Serialize.encode commit)
     DBInternal.unsafeClose db
@@ -132,13 +126,13 @@ writeCommit commit key = liftIO $ do
 
 -- | Loads the object representing user-specified configuration from disk
 loadConfig :: EitherT Error IO Config
-loadConfig = getConfigPath >>= loadFromFile
+loadConfig = (liftIO getConfigPath) >>= loadFromFile
 
 -- | Writes the object representing user-specified configuration to disk
-writeConfig :: Config -> EitherT Error IO ()
+writeConfig :: Config -> IO ()
 writeConfig config = do
     configPath <- getConfigPath
-    liftIO $ ByteString.writeFile configPath (Serialize.encode config)
+    ByteString.writeFile configPath (Serialize.encode config)
 
 -- * paths
 
@@ -166,8 +160,8 @@ commitsPath = rootPath ++ "/commits"
 -- | configuration information is stored. Returnvalue is wrapped in
 -- | the `IO` monad because getting the user's home directory is
 -- | a monadic operation.
-getConfigPath :: EitherT Error IO FilePath
-getConfigPath = ((++) "/.horseconfig") <$> liftIO Dir.getHomeDirectory
+getConfigPath :: IO FilePath
+getConfigPath = ((++) "/.horseconfig") <$> Dir.getHomeDirectory
 
 -- * lists
 
@@ -189,19 +183,65 @@ serializationPathsAndInitialContents =
 -- * utility functions
 
 -- | Creates a file on disk with the specified content
-createFileWithContents :: (FilePath, ByteString.ByteString) -> EitherT Error IO ()
-createFileWithContents (path, contents) = liftIO $ do
+createFileWithContents :: (FilePath, ByteString.ByteString) -> IO ()
+createFileWithContents (path, contents) = do
     handle <- IO.openFile path IO.WriteMode
     ByteString.hPutStr handle contents
     IO.hClose handle
 
 -- | Creates a directory on disk at the specified destination, 
 -- | destroying one if it was already there
-destructivelyCreateDirectory :: FilePath -> EitherT Error IO ()
-destructivelyCreateDirectory dir = liftIO $ do
+destructivelyCreateDirectory :: FilePath -> IO ()
+destructivelyCreateDirectory dir = do
     dirAlreadyExists <- Dir.doesDirectoryExist dir
     if dirAlreadyExists
         then Dir.removeDirectoryRecursive dir
         else return ()
     Dir.createDirectory dir
 
+-- * assorted
+
+loadHistory :: Commit -> EitherT Error IO [Commit]
+loadHistory commit
+    = liftIO
+    $ iterateMaybeM
+        (fmap eitherToMaybe . runEitherT . loadParent)
+        commit
+
+loadParent :: Commit -> EitherT Error IO Commit
+loadParent commit =
+    if isJust $ parentHash commit
+        then loadCommit
+            . fromJust
+            . parentHash
+            $ commit
+        else left $ "No parent for commit with hash " ++ (show . hash $ commit)
+
+refToHash :: String -> EitherT Error IO Hash
+refToHash unparsedRef = do
+    base <- case baseRef of
+        "HEAD" -> headHash <$> loadHead -- TODO: constant?
+        someHash -> return $ stringToHash someHash
+    final <- (hoistEither relatives) >>= applyRelatives base
+    liftIO . putStrLn . show $ final
+    right final
+    where
+        parentSyntax :: Char
+        parentSyntax = '^'
+
+        applyRelatives :: Hash -> [Relative] -> EitherT Error IO Hash
+        applyRelatives h relatives = left ""
+
+        baseRef :: String
+        baseRef = takeWhile (not . isRelativeSyntax) unparsedRef
+
+        relatives :: Either Error [Relative]
+        relatives = mapM toRelative $ dropWhile (not . isRelativeSyntax) unparsedRef
+
+        toRelative :: Char -> Either Error Relative
+        toRelative ch = if ch == parentSyntax
+            then Right Parent
+            else Left "Undefined relative syntax"
+
+        isRelativeSyntax :: Char -> Bool
+        isRelativeSyntax ch = ch == parentSyntax

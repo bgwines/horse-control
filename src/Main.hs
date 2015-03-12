@@ -8,6 +8,7 @@ import qualified Horse.Types as Types
 import qualified Horse.Commands.Porcelain as Porcelain
 
 import Control.Monad.Trans.Either
+import Control.Monad.IO.Class (liftIO)
 
 import Options.Applicative
 
@@ -109,15 +110,15 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 run :: Command -> IO ()
 run cmd = do
-    runEitherT $ case cmd of
-        Init               -> Porcelain.init
-        Config name email  -> Porcelain.config name email
-        Status             -> Porcelain.status
-        Stage path         -> Porcelain.stage path
-        Commit message     -> Porcelain.commit message
-        Checkout ref       -> Porcelain.checkout ref
-        Show ref           -> Porcelain.hshow ref
-        Log ref n          -> Porcelain.log ref n
+    case cmd of
+        Init               -> fmap Right $ Porcelain.init
+        Config name email  -> fmap Right $ Porcelain.config name email
+        Status             -> runEitherT $ Porcelain.status
+        Stage path         -> runEitherT $ Porcelain.stage path
+        Commit message     -> runEitherT $ Porcelain.commit message
+        Checkout ref       -> runEitherT $ Porcelain.checkout ref
+        Show ref           -> runEitherT $ Porcelain.hshow ref
+        Log ref n          -> runEitherT $ Porcelain.log ref n
     return ()
 
 main :: IO ()

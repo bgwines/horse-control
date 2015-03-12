@@ -16,11 +16,9 @@ module Horse.Types(
 , Email
 , Hash
 , Diff
+, Relative(..)
 , Date
 , Error
-
--- * constructors
-, stringToHash
 ) where
 
 -- imports
@@ -29,37 +27,12 @@ import Prelude hiding (show, init, log)
 
 import GHC.Generics
 
--- qualified imports
-
-import qualified Data.Convertible as Convert
-
-import qualified System.IO as IO
-import qualified System.Directory as Dir
-
-import qualified Data.Hex as Hex
-
-import qualified Crypto.Hash.SHA256 as SHA256
-
-import qualified Database.LevelDB.Base as DB
-import qualified Database.LevelDB.Internal as DBInternal
-
 -- imported functions
 
 import Data.Serialize (Serialize)
 
 import Data.Default (Default, def)
-import Data.ByteString (ByteString, empty, pack)
-
-import Data.Either.Unwrap (fromLeft, fromRight)
-
-import Data.Time.Clock (getCurrentTime, utctDay)
-import Data.Time.Calendar (toGregorian)
-
-import Text.Printf (printf)
-
-import Control.Monad ((>>=), return)
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad.IO.Class (liftIO)
+import Data.ByteString (ByteString, empty)
 
 -- | Error type
 type Error = String
@@ -69,14 +42,11 @@ type Email = String
 
 -- | The hash type used for hashing commits and diffs.
 type Hash = ByteString
+data Relative = Parent
 
 instance Default Hash where
     def :: Hash
     def = empty
-
--- | Conversion function for hashes
-stringToHash :: String -> Hash
-stringToHash = pack  . map Convert.convert
 
 -- | The difference between two states of the filesystem.
 type Diff = [(FilePath, String, String)]

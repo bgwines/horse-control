@@ -1,11 +1,14 @@
-module Main where
+{-# LANGUAGE ScopedTypeVariables #-}
+
+module Main (main) where
 
 -- imports
 
-import Test.HUnit
-import Test.QuickCheck
+import Test.Tasty
+import Test.Tasty.HUnit
 
 import Control.Monad.Trans.Either
+import Control.Monad.IO.Class (liftIO)
 
 -- qualified imports
 
@@ -24,16 +27,16 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
-import Text.Printf (printf)
-
 import System.Exit (exitSuccess)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
-import Control.Monad ((>>=), return)
+import Control.Monad ((>>=), return, when)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
+
+import Data.Either.Combinators (isLeft, fromLeft)
 
 -- horse imports
 
@@ -51,14 +54,34 @@ getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
         formatChar ':' = '-'
         formatChar ch = ch
 
-testInit :: Test
-testInit = TestCase $ do
-    Porcelain.init
-    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
-    assertBool "Empty repository root directory (./.horse) was not created" rootDirectoryCreated
+runTest :: Assertion -> Assertion
+runTest t = do
+    testDirectory <- getTestDirectory
+    Dir.createDirectory testDirectory
+    Dir.setCurrentDirectory testDirectory
+    --------------------------------------
+    t
+    --------------------------------------
+    Dir.setCurrentDirectory ".."
+    Dir.removeDirectoryRecursive testDirectory
 
-testAddAndRm :: Test
-testAddAndRm = TestCase $ do
+testLog :: Assertion
+testLog = do
+    Porcelain.init
+    eitherSuccess <- runEitherT $ do
+        let messages = map Just ["A", "B", "C", "D"]
+        commits <- mapM Porcelain.commit' messages
+
+        history <- reverse <$> HIO.loadHistory (last commits)
+
+        liftIO $ commits @?= history
+        liftIO $ (length commits) @?= (length messages) -- WLOG
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft "" eitherSuccess)
+    return ()
+
+testStage :: Assertion
+testStage = do
     Porcelain.init
 
     let addedFile = "a"
@@ -70,36 +93,29 @@ testAddAndRm = TestCase $ do
 
     eitherStagingArea <- runEitherT HIO.loadStagingArea
 
-    assertEqual
-        "Should only have staged addition of the added file; no more; no less. "
-        (Right [addedFile])
-        (adds <$> eitherStagingArea)
-    assertEqual
-        "Should not have staged modifications of files. "
-        (Right [])
-        (mods <$> eitherStagingArea)
-    assertEqual
-        "Should not have staged deletions of files. "
-        (Right [])
-        (dels <$> eitherStagingArea)
+    (Right [addedFile]) @?= (adds <$> eitherStagingArea)
 
-    -- rm stuff
-    -- how does Git handle adding and rming the same file?
+    (Right [])          @?= (mods <$> eitherStagingArea)
 
-testPorcelain :: Test
-testPorcelain = TestList
-    [ TestLabel "horse init" testInit
-    , TestLabel "horse add, rm" testAddAndRm ]
+    (Right [])          @?= (dels <$> eitherStagingArea)
 
-main :: IO Counts
-main = do
-    testDirectory <- getTestDirectory
-    Dir.createDirectory testDirectory
-    Dir.setCurrentDirectory testDirectory
+testInit :: Assertion
+testInit = do
+    Porcelain.init
+    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
+    rootDirectoryCreated @?= True
 
-    runTestTT testPorcelain
+tests :: TestTree
+tests = testGroup "unit tests"
+    [ testCase
+        "Testing `horse init`"
+        (runTest testInit) 
+    , testCase
+        "Testing `horse stage`"
+        (runTest testStage) 
+    , testCase
+        "Testing `horse log`"
+        (runTest testLog) ]
 
-    Dir.setCurrentDirectory ".."
-    Dir.removeDirectoryRecursive testDirectory
-
-    exitSuccess
+main :: IO ()
+main = defaultMain tests

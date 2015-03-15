@@ -62,7 +62,7 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 import Data.Maybe (isJust, fromJust)
 
-import Control.Applicative ((<$>))
+import Control.Applicative ((<$>), (<*>))
 import Control.Monad ((>>=), return)
 import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 import Control.Monad.IO.Class (liftIO, MonadIO(..))
@@ -70,7 +70,7 @@ import Control.Monad.IO.Class (liftIO, MonadIO(..))
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (maybeToEither, eitherToMaybe, stringToHash)
+import Horse.Utils (maybeToEither, eitherToMaybe, stringToHash, putStrLn')
 
 -- | Writes a serializable object to a file
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -112,8 +112,11 @@ loadCommit key = do
         maybeCommit <- DB.get db Default.def key
         DBInternal.unsafeClose db
         return maybeCommit
-    commit <- hoistEither $ maybeToEither maybeCommit
+    commit <- hoistEither $ maybeToEither loadErrorMessage maybeCommit
     hoistEither $ Serialize.decode commit
+    where
+        loadErrorMessage :: String
+        loadErrorMessage = "Could not fetch commit for key " ++ (show key)
 
 -- | Writes the commit with the given hash to the database
 writeCommit :: Commit -> Hash -> IO ()
@@ -161,7 +164,7 @@ commitsPath = rootPath ++ "/commits"
 -- | the `IO` monad because getting the user's home directory is
 -- | a monadic operation.
 getConfigPath :: IO FilePath
-getConfigPath = ((++) "/.horseconfig") <$> Dir.getHomeDirectory
+getConfigPath = (++) <$> Dir.getHomeDirectory <*> (return "/.horseconfig")
 
 -- * lists
 
@@ -201,13 +204,17 @@ destructivelyCreateDirectory dir = do
 
 -- * assorted
 
+-- | Loads the history from a given commit, all the way back
+-- | to the start. Returns in reverse order (latest commit at front)
 loadHistory :: Commit -> EitherT Error IO [Commit]
 loadHistory commit
     = liftIO
+    . fmap ((:) commit)
     $ iterateMaybeM
         (fmap eitherToMaybe . runEitherT . loadParent)
         commit
 
+-- | Attempts to load the parent commit for a given commit
 loadParent :: Commit -> EitherT Error IO Commit
 loadParent commit =
     if isJust $ parentHash commit
@@ -217,13 +224,19 @@ loadParent commit =
             $ commit
         else left $ "No parent for commit with hash " ++ (show . hash $ commit)
 
+-- | Given any string, attempt to convert it to a hash.
+-- | Succeeds if the string is in a hash format, even if
+-- | the hash is not a key in the database (no commits / diffs
+-- | have been hashed with that key yet). Fails if the format
+-- | is unexpected. Acceptable formats are listed in user-facing
+-- | documentation
 refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
     base <- case baseRef of
         "HEAD" -> headHash <$> loadHead -- TODO: constant?
         someHash -> return $ stringToHash someHash
     final <- (hoistEither relatives) >>= applyRelatives base
-    liftIO . putStrLn . show $ final
+    putStrLn' . show $ final
     right final
     where
         parentSyntax :: Char

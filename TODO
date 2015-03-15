@@ -2,3 +2,4 @@
 refs -- prefixes, branches, tags, etc...
 aliases
 checkout -> "load" ?
+error if not a repo

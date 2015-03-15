@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | The standard commands accessible to users through the CLI
 module Horse.Commands.Porcelain
@@ -10,6 +11,7 @@ module Horse.Commands.Porcelain
 , Horse.Commands.Porcelain.stage
 , Horse.Commands.Porcelain.checkout
 , Horse.Commands.Porcelain.commit
+, Horse.Commands.Porcelain.commit'
 , Horse.Commands.Porcelain.hshow
 , Horse.Commands.Porcelain.log
 ) where
@@ -39,6 +41,7 @@ import qualified Data.ByteString as ByteString
 import qualified Crypto.Hash.SHA256 as SHA256
 
 import qualified Database.LevelDB.Base as DB
+import qualified Database.LevelDB.Internal as DBI
 
 -- imported functions
 
@@ -47,15 +50,13 @@ import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
-
-
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (stringToHash, (|<$>|))
+import Horse.Utils (stringToHash, (|<$>|), putStrLn')
 
 import qualified Horse.IO as HIO
 
@@ -97,14 +98,20 @@ init :: IO ()
 init = do
     repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.rootPath
 
+    -- initialize config file; it's read from
+    -- in this function and hence needs to exist
+    config Nothing Nothing 
+
     when repositoryAlreadyExists
         $ putStrLn $ "Error: repository already exists"
 
     unless repositoryAlreadyExists $ do
         mapM_ HIO.destructivelyCreateDirectory HIO.directories
 
-        -- should close these DB handles?
-        sequence $ map (flip DB.open $ DB.defaultOptions{ DB.createIfMissing = True }) HIO.databasePaths
+        let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
+        mapM_
+            ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
+            HIO.databasePaths
 
         sequence $ map HIO.createFileWithContents HIO.serializationPathsAndInitialContents
 
@@ -134,18 +141,39 @@ stage path = do
 -- | single parameter of a message.
 commit :: Maybe String -> EitherT Error IO ()
 commit maybeMessage = do
+    createdCommit <- commit' maybeMessage
+
+    putStrLn' $ "[<branch> "
+        ++ (show . ByteString.take 8 $ hash createdCommit)
+        ++  "] " ++ (message createdCommit)
+    putStrLn' $ "0" ++ " files changed, "
+        ++ "0" ++ " insertions(+), "
+        ++ "0" ++ " deletions(-)"
+
+-- | Writes the staging area as a commit to disk. Currently takes a
+-- | single parameter of a message. This function is exposed only for
+-- | testing purposes.
+commit' :: Maybe String -> EitherT Error IO Commit
+commit' maybeMessage = do
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
-    parent <- (headHash <$> HIO.loadHead) >>= HIO.loadCommit
+
+    isFirstCommit <- ((==) Default.def) <$> HIO.loadHead
+    parent <- if isFirstCommit
+        then right Nothing
+        else (headHash <$> HIO.loadHead) >>= (fmap Just . HIO.loadCommit)
+
     stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
+
     config <- HIO.loadConfig
+
     let message = fromMaybe "default message" maybeMessage
-    -- TODO: coalesce commit-creation somehow?
+
     let hashlessCommit = Commit {
         author                  = userInfo config
         , date                  = now
         , hash                  = Default.def -- no hash yet since commit
                                               -- hasn't been created
-        , parentHash            = Just $ hash parent
+        , parentHash            = hash <$> parent
         , diffWithPrimaryParent = stagedDiff
         , message               = message }
 
@@ -158,14 +186,7 @@ commit maybeMessage = do
 
     liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
 
-    -- debug code; can delete
-    liftIO . putStrLn $ "Testing writing of commit: loading written commit: "
-    (HIO.loadCommit commitHash) >>= (liftIO . print)
-
-    liftIO . putStrLn $ "[<branch> " ++ (show . ByteString.take 8 $ commitHash)
-        ++  "] " ++ message
-    liftIO . putStrLn $ "0" ++ " files changed, " ++ "0" ++ " insertions(+), "
-        ++ "0" ++ " deletions(-)"
+    right completeCommit
 
     where
         -- TODO: where does this go?
@@ -185,7 +206,7 @@ commit maybeMessage = do
 checkout :: String -> EitherT Error IO ()
 checkout ref = do
     soughtCommit <- HIO.loadCommit . stringToHash $ ref
-    liftIO . putStrLn $ "running command \"checkout\" with args "
+    putStrLn' $ "running command \"checkout\" with args "
     liftIO . print $ ref
     liftIO . print $ soughtCommit
     -- TODO
@@ -201,9 +222,17 @@ hshow maybeRef = do
 -- | Prints the history from the current commit backwards
 log :: Maybe String -> Maybe Int -> EitherT Error IO ()
 log maybeRef maybeNumCommits = do
+    -- TODO:
+    --     > testing/ [master] > ../dist/build/Horse/horse log
+    --     > maybeNumCommits: Nothing
+    --     > headHash: ""
+    --     > ref: ""
+    --     > ERROR: Could not fetch commit for key ""
     headHash <- headHash <$> HIO.loadHead
+
     let ref = maybe headHash stringToHash maybeRef
+
     commit <- HIO.loadCommit ref
+
     history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
     (liftIO . print) $ message <$> history
-

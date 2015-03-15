@@ -10,10 +10,13 @@ import qualified Horse.Commands.Porcelain as Porcelain
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO)
 
+import Data.Either.Combinators (isLeft, fromLeft)
+
 import Options.Applicative
 
 data Command
     = Init
+    | Version
     | Config (Maybe String) (Maybe Types.Email)
     | Status
     | Stage String
@@ -21,6 +24,7 @@ data Command
     | Checkout String
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int)
+    deriving (Show)
 
 parseInit :: Parser Command
 parseInit = pure Init
@@ -70,6 +74,9 @@ parseLog = Log
             <> help "Number of commits to display in history." )
          )
 
+parseVersion :: Parser Command
+parseVersion = pure Version
+
 parseCommand :: Parser Command
 parseCommand = subparser
     $  command "init"     (parseInit     `withInfo` initHelpMessage)
@@ -80,6 +87,7 @@ parseCommand = subparser
     <> command "checkout" (parseCheckout `withInfo` checkoutHelpMessage)
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
     <> command "log"      (parseLog      `withInfo` logHelpMessage)
+    <> command "version"  (parseVersion  `withInfo` "Show version")
     where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -110,7 +118,8 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 run :: Command -> IO ()
 run cmd = do
-    case cmd of
+    eitherSuccess <- case cmd of
+        Version            -> fmap Right $ putStrLn "0.1.0.2"
         Init               -> fmap Right $ Porcelain.init
         Config name email  -> fmap Right $ Porcelain.config name email
         Status             -> runEitherT $ Porcelain.status
@@ -119,7 +128,9 @@ run cmd = do
         Checkout ref       -> runEitherT $ Porcelain.checkout ref
         Show ref           -> runEitherT $ Porcelain.hshow ref
         Log ref n          -> runEitherT $ Porcelain.log ref n
-    return ()
+    if isLeft eitherSuccess
+        then putStrLn $ "ERROR: " ++ (fromLeft "" eitherSuccess)
+        else return ()
 
 main :: IO ()
 main = run =<< execParser

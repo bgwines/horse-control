@@ -1,17 +1,20 @@
 -- | Utility functions
 module Horse.Utils
-( -- * conversions
+( -- * maybe / either
   eitherToMaybe
 , maybeToEither
-
+, fromEitherMaybeDefault
 , stringToHash
 
 -- * general
 , putStrLn'
+, iterateMaybe
+, toMaybe
 
 -- * combinators
 , (|$|)
 , (|<$>|)
+, (</>)
 ) where
 
 import Control.Monad.Trans.Either
@@ -23,7 +26,52 @@ import Control.Applicative ((<$>))
 
 import Data.ByteString (pack)
 
+import qualified Data.Default as Default
+
 import qualified Data.Convertible as Convert
+
+-- * maybe / either
+
+-- | Lossily convert, discarding the error object
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left _) = Nothing
+eitherToMaybe (Right x) = Just x
+
+-- | Convert, with a error message to be used if the Maybe is Nothing
+maybeToEither :: Error -> Maybe b -> Either Error b
+maybeToEither error Nothing = Left error
+maybeToEither _ (Just x) = Right x
+
+-- | Prefers the Maybe to the Either
+fromEitherMaybeDefault :: (Default.Default b) => Either a b -> Maybe b -> b
+fromEitherMaybeDefault (Left  _) Nothing  = Default.def
+fromEitherMaybeDefault (Right x) Nothing  = x
+fromEitherMaybeDefault (Left  _) (Just y) = y
+fromEitherMaybeDefault (Right _) (Just y) = y
+
+-- | Conversion function for hashes
+stringToHash :: String -> Hash
+stringToHash = pack  . map Convert.convert
+
+-- * general
+
+-- | `putStrLn` but for the `EitherT` monad
+putStrLn' :: String -> EitherT a IO ()
+putStrLn' = liftIO . putStrLn
+
+-- | Wrap in a `Just` if the predicate function returns `True`
+toMaybe :: a -> (a -> Bool) -> Maybe a
+toMaybe a f = if f a
+    then Just a
+    else Nothing
+
+-- | Iterate until the next-function returns a `Nothing`
+iterateMaybe :: (a -> Maybe a) -> a -> [a]
+iterateMaybe f curr = case f curr of
+    Nothing -> []
+    (Just next) -> (:) next $ iterateMaybe f next
+
+-- * combinators
 
 -- | Like <$>, but where the function is contained in
 -- | a functor instead of the argument (in this case,
@@ -40,20 +88,10 @@ import qualified Data.Convertible as Convert
 (Nothing) |<$>| x = x
 (Just f) |<$>| x = f <$> x
 
--- | `putStrLn` but for the `EitherT` monad
-putStrLn' :: String -> EitherT a IO ()
-putStrLn' = liftIO . putStrLn
-
--- | Lossily convert, discarding the error object
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left _) = Nothing
-eitherToMaybe (Right x) = Just x
-
--- | Convert, with a error message to be used if the Maybe is Nothing
-maybeToEither :: Error -> Maybe b -> Either Error b
-maybeToEither error Nothing = Left error
-maybeToEither _ (Just x) = Right x
-
--- | Conversion function for hashes
-stringToHash :: String -> Hash
-stringToHash = pack  . map Convert.convert
+-- | Concatenates two filepaths, for example:
+-- |
+-- |     > "a/b" </> "c"
+-- |     "a/b/c"
+-- |
+(</>) :: FilePath -> FilePath -> FilePath
+a </> b = a ++ "/" ++ b

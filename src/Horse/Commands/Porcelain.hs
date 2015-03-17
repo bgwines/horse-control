@@ -56,16 +56,13 @@ import Control.Monad.IO.Class (liftIO)
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (stringToHash, (|<$>|), putStrLn')
+import Horse.Utils
+    ( stringToHash
+    , (|<$>|)
+    , putStrLn'
+    , fromEitherMaybeDefault )
 
 import qualified Horse.IO as HIO
-
--- prefers the Maybe to the Either
-fromEitherMaybeDefault :: (Default.Default b) => Either a b -> Maybe b -> b
-fromEitherMaybeDefault (Left  _) Nothing  = Default.def
-fromEitherMaybeDefault (Right x) Nothing  = x
-fromEitherMaybeDefault (Left  _) (Just y) = y
-fromEitherMaybeDefault (Right _) (Just y) = y
 
 -- | Sets user-specific configuration information.
 config :: Maybe String -> Maybe Email -> IO ()
@@ -123,12 +120,20 @@ init = do
 -- TODO: check initialization has happened (all functions should do this)
 status :: EitherT Error IO ()
 status = do
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+
     HIO.loadStagingArea >>= (liftIO . print)
 
 -- | Adds the specified modification / addition / deletion of the
 -- | specified file to the staging area
 stage :: String -> EitherT Error IO ()
 stage path = do
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+
     stagingArea <- HIO.loadStagingArea
 
     let updatedStagingArea = case 0 of 0 -> stagingArea { adds = path : (adds stagingArea) }
@@ -141,6 +146,10 @@ stage path = do
 -- | single parameter of a message.
 commit :: Maybe String -> EitherT Error IO ()
 commit maybeMessage = do
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+
     createdCommit <- commit' maybeMessage
 
     putStrLn' $ "[<branch> "
@@ -205,6 +214,10 @@ commit' maybeMessage = do
 -- | TODO: ref
 checkout :: String -> EitherT Error IO ()
 checkout ref = do
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+
     soughtCommit <- HIO.loadCommit . stringToHash $ ref
     putStrLn' $ "running command \"checkout\" with args "
     liftIO . print $ ref
@@ -215,24 +228,28 @@ checkout ref = do
 -- | argument of HEAD.
 hshow :: Maybe String -> EitherT Error IO ()
 hshow maybeRef = do
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+
     headHash <- headHash <$> HIO.loadHead
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
-    ( HIO.loadCommit ref ) >>= (liftIO . print)
+    (HIO.loadCommit ref) >>= (liftIO . print)
 
 -- | Prints the history from the current commit backwards
 log :: Maybe String -> Maybe Int -> EitherT Error IO ()
 log maybeRef maybeNumCommits = do
-    -- TODO:
-    --     > testing/ [master] > ../dist/build/Horse/horse log
-    --     > maybeNumCommits: Nothing
-    --     > headHash: ""
-    --     > ref: ""
-    --     > ERROR: Could not fetch commit for key ""
-    headHash <- headHash <$> HIO.loadHead
+    isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    let ref = maybe headHash stringToHash maybeRef
+    commitsHaveBeenMade <- HIO.commitsHaveBeenMade
+    when commitsHaveBeenMade $ do
+        headHash <- headHash <$> HIO.loadHead
 
-    commit <- HIO.loadCommit ref
+        let ref = maybe headHash stringToHash maybeRef
 
-    history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
-    (liftIO . print) $ message <$> history
+        commit <- HIO.loadCommit ref
+
+        history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
+        (liftIO . print) $ message <$> history

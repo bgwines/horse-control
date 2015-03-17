@@ -1,4 +1,5 @@
 {-# LANGUAGE PackageImports #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Module for writing and reading from disk / the database
 module Horse.IO
@@ -30,6 +31,7 @@ module Horse.IO
 , directories
 , databasePaths
 , serializationPathsAndInitialContents
+, commitsHaveBeenMade
 
 -- * utility functions
 , createFileWithContents
@@ -38,11 +40,12 @@ module Horse.IO
 -- * assorted
 , loadHistory
 , loadParent
+, isRepositoryOrAncestorIsRepo
 ) where
 
 -- imports
 
-import Prelude hiding (init, log)
+import Prelude hiding (init, log, null)
 
 import Control.Monad.Trans.Either
 
@@ -62,6 +65,10 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 import Data.Maybe (isJust, fromJust)
 
+import Filesystem.Path (parent, null)
+import qualified Filesystem.Path (FilePath)
+import Filesystem.Path.CurrentOS (decodeString, encodeString)
+
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad ((>>=), return)
 import "monad-extras" Control.Monad.Extra (iterateMaybeM)
@@ -70,7 +77,14 @@ import Control.Monad.IO.Class (liftIO, MonadIO(..))
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (maybeToEither, eitherToMaybe, stringToHash, putStrLn')
+import Horse.Utils
+    ( maybeToEither
+    , eitherToMaybe
+    , stringToHash
+    , putStrLn'
+    , iterateMaybe
+    , toMaybe
+    , (</>))
 
 -- | Writes a serializable object to a file
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -258,3 +272,26 @@ refToHash unparsedRef = do
 
         isRelativeSyntax :: Char -> Bool
         isRelativeSyntax ch = ch == parentSyntax
+
+-- | Returns whether the specified directory is part of a repository.
+isRepo :: FilePath -> IO Bool
+isRepo = Dir.doesDirectoryExist . (\path -> path </> rootPath)
+
+-- | Gets the ancestors of the current directory
+filesystemAncestors :: IO [FilePath]
+filesystemAncestors = do
+    currentDirectory <- decodeString <$> Dir.getCurrentDirectory
+    let ancestors = iterateMaybe getParent currentDirectory
+    return . map encodeString . (:) currentDirectory $ ancestors
+    where
+        getParent :: Filesystem.Path.FilePath -> Maybe Filesystem.Path.FilePath
+        getParent curr = toMaybe (parent curr) ((/=) curr)
+
+-- | Returns whether the current directory is part of a repository.
+isRepositoryOrAncestorIsRepo :: IO Bool
+isRepositoryOrAncestorIsRepo
+    = filesystemAncestors >>= (fmap or . mapM isRepo)
+
+-- | Identifies whether any commits have been made in the current repository
+commitsHaveBeenMade :: EitherT Error IO Bool
+commitsHaveBeenMade = ((/=) Default.def) <$> loadHead

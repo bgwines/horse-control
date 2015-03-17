@@ -43,7 +43,7 @@ import Data.Either.Combinators (isLeft, fromLeft)
 import Horse.Types
 
 import qualified Horse.IO as HIO
-import qualified Horse.Commands.Porcelain as Porcelain
+import qualified Horse.Commands.Porcelain as H
 
 getTestDirectory :: IO FilePath
 getTestDirectory = fmap (map formatChar . Prelude.show) getCurrentTime
@@ -67,10 +67,10 @@ runTest t = do
 
 testLog :: Assertion
 testLog = do
-    Porcelain.init
+    H.init
     eitherSuccess <- runEitherT $ do
         let messages = map Just ["A", "B", "C", "D"]
-        commits <- mapM Porcelain.commit' messages
+        commits <- mapM H.commit' messages
 
         history <- reverse <$> HIO.loadHistory (last commits)
 
@@ -82,16 +82,19 @@ testLog = do
 
 testStage :: Assertion
 testStage = do
-    Porcelain.init
+    H.init
 
     let addedFile = "a"
     handle <- IO.openFile addedFile IO.WriteMode
     IO.hPutStr handle "a"
     IO.hClose handle
 
-    runEitherT $ Porcelain.stage addedFile
+    Dir.getCurrentDirectory >>= putStrLn
+    runEitherT $ H.stage addedFile
+    Dir.getCurrentDirectory >>= putStrLn
 
     eitherStagingArea <- runEitherT HIO.loadStagingArea
+    putStrLn . show $ eitherStagingArea
 
     (Right [addedFile]) @?= (adds <$> eitherStagingArea)
 
@@ -101,9 +104,26 @@ testStage = do
 
 testInit :: Assertion
 testInit = do
-    Porcelain.init
+    H.init
     rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
     rootDirectoryCreated @?= True
+
+testNoRepo :: Assertion
+testNoRepo = do
+    -- *no* H.init
+    status   <- runEitherT $ H.status
+    stage    <- runEitherT $ H.stage    Default.def
+    checkout <- runEitherT $ H.checkout Default.def
+    commit   <- runEitherT $ H.commit   Default.def
+    hshow    <- runEitherT $ H.hshow    Default.def
+    log      <- runEitherT $ H.log      Default.def Default.def
+
+    isLeft status    @?= True
+    isLeft stage     @?= True
+    isLeft checkout  @?= True
+    isLeft commit    @?= True
+    isLeft hshow     @?= True
+    isLeft log       @?= True
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -115,7 +135,10 @@ tests = testGroup "unit tests"
         (runTest testStage) 
     , testCase
         "Testing `horse log`"
-        (runTest testLog) ]
+        (runTest testLog) 
+    , testCase
+        "Testing commands run without a Horse repository"
+        (runTest testNoRepo) ]
 
 main :: IO ()
 main = defaultMain tests

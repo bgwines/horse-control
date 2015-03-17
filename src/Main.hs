@@ -129,7 +129,7 @@ run cmd = do
         Show ref           -> runEitherT $ Porcelain.hshow ref
         Log ref n          -> runEitherT $ Porcelain.log ref n
     if isLeft eitherSuccess
-        then putStrLn $ "ERROR: " ++ (fromLeft "" eitherSuccess)
+        then putStrLn $ fromLeft "" eitherSuccess
         else return ()
 
 main :: IO ()

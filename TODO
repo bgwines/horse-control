@@ -3,3 +3,4 @@ refs -- prefixes, branches, tags, etc...
 aliases
 checkout -> "load" ?
 error if not a repo
+homogeneous returntypes from commands for testability

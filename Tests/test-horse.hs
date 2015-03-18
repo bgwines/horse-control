@@ -125,6 +125,18 @@ testNoRepo = do
     isLeft hshow     @?= True
     isLeft log       @?= True
 
+testDiffsInCommits :: Assertion
+testDiffsInCommits = do
+    H.init
+
+    let addedFile = "a"
+    handle <- IO.openFile addedFile IO.WriteMode
+    IO.hPutStr handle "a"
+    IO.hClose handle
+
+    runEitherT $ H.stage addedFile
+    return ()
+
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -137,8 +149,11 @@ tests = testGroup "unit tests"
         "Testing `horse log`"
         (runTest testLog) 
     , testCase
-        "Testing commands run without a Horse repository"
-        (runTest testNoRepo) ]
+        "Testing commands run without a horse-control repository"
+        (runTest testNoRepo) 
+    , testCase
+        "Testing diffs being stored in commits"
+        (runTest testDiffsInCommits)]
 
 main :: IO ()
 main = defaultMain tests

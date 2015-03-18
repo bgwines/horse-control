@@ -166,12 +166,12 @@ commit' :: Maybe String -> EitherT Error IO Commit
 commit' maybeMessage = do
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
 
-    isFirstCommit <- ((==) Default.def) <$> HIO.loadHead
+    isFirstCommit <- ((==) Default.def) <$> HIO.loadHeadHash
     parent <- if isFirstCommit
         then right Nothing
-        else (headHash <$> HIO.loadHead) >>= (fmap Just . HIO.loadCommit)
+        else HIO.loadHeadHash >>= (fmap Just . HIO.loadCommit)
 
-    stagedDiff <- HIO.loadStagingArea >>= getStagedDiff
+    stagedDiff <- HIO.loadStagingArea >>= liftIO . HIO.getStagedDiff
 
     config <- HIO.loadConfig
 
@@ -191,7 +191,7 @@ commit' maybeMessage = do
 
     liftIO $ HIO.writeCommit completeCommit commitHash
 
-    liftIO . HIO.writeHead $ Head { headHash = commitHash }
+    liftIO . HIO.writeHeadHash $ commitHash
 
     liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
 
@@ -205,10 +205,6 @@ commit' maybeMessage = do
             . Hex.hex
             . SHA256.hash
             . Serialize.encode
-
-        -- TODO
-        getStagedDiff :: StagingArea -> EitherT Error IO Diff
-        getStagedDiff stagingArea = return Default.def
 
 -- | Sets all tracked files to their state in the specified commit
 -- | TODO: ref
@@ -232,7 +228,7 @@ hshow maybeRef = do
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    headHash <- headHash <$> HIO.loadHead
+    headHash <- HIO.loadHeadHash
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
     (HIO.loadCommit ref) >>= (liftIO . print)
 
@@ -245,7 +241,7 @@ log maybeRef maybeNumCommits = do
 
     commitsHaveBeenMade <- HIO.commitsHaveBeenMade
     when commitsHaveBeenMade $ do
-        headHash <- headHash <$> HIO.loadHead
+        headHash <- HIO.loadHeadHash
 
         let ref = maybe headHash stringToHash maybeRef
 

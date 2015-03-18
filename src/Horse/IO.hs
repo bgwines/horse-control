@@ -8,8 +8,8 @@ module Horse.IO
 , writeStagingArea
 
 -- * HEAD
-, loadHead
-, writeHead
+, loadHeadHash
+, writeHeadHash
 
 -- * commits
 , loadCommit
@@ -21,7 +21,7 @@ module Horse.IO
 
 -- * paths
 , rootPath
-, headPath
+, headHashPath
 , stagingAreaPath
 , diffsPath
 , commitsPath
@@ -41,6 +41,10 @@ module Horse.IO
 , loadHistory
 , loadParent
 , isRepositoryOrAncestorIsRepo
+
+-- * diffing
+, diffWithHEAD
+, getStagedDiff
 ) where
 
 -- imports
@@ -51,8 +55,14 @@ import Control.Monad.Trans.Either
 
 -- qualified imports
 
+import qualified Shelly as Sh
+
+import qualified Data.Text as Text
+
 import qualified System.IO as IO
 import qualified System.Directory as Dir
+
+import qualified Filesystem.Path (FilePath)
 
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
@@ -61,16 +71,17 @@ import qualified Data.ByteString as ByteString
 import qualified Database.LevelDB.Base as DB
 import qualified Database.LevelDB.Internal as DBInternal
 
+import qualified Data.Text.Punycode as Punycode (encode)
+
 -- imported functions
 
 import Data.Maybe (isJust, fromJust)
 
 import Filesystem.Path (parent, null)
-import qualified Filesystem.Path (FilePath)
 import Filesystem.Path.CurrentOS (decodeString, encodeString)
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad ((>>=), return)
+import Control.Monad ((>>=), return, unless)
 import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
@@ -109,12 +120,12 @@ writeStagingArea = writeToFile stagingAreaPath
 -- * HEAD
 
 -- | Loads the object representing HEAD from disk
-loadHead :: EitherT Error IO Head
-loadHead = loadFromFile headPath
+loadHeadHash :: EitherT Error IO Hash
+loadHeadHash = loadFromFile headHashPath
 
 -- | Writes the object representing HEAD to disk
-writeHead :: Head -> IO ()
-writeHead = writeToFile headPath
+writeHeadHash :: Hash -> IO ()
+writeHeadHash = writeToFile headHashPath
 
 -- * commits
 
@@ -158,20 +169,23 @@ rootPath :: FilePath
 rootPath = ".horse"
 
 -- | The path to where the object representing HEAD is stored
-headPath :: FilePath
-headPath = rootPath ++ "/HEAD"
+headHashPath :: FilePath
+headHashPath = rootPath </> "HEAD-hash"
+
+headContentsPath :: FilePath
+headContentsPath = rootPath </> "HEAD"
 
 -- | The path to where the object representing the staging area is stored
 stagingAreaPath :: FilePath
-stagingAreaPath = rootPath ++ "/stagingArea"
+stagingAreaPath = rootPath </> "stagingArea"
 
 -- | The path to where diffs are stored
 diffsPath :: FilePath
-diffsPath = rootPath ++ "/diffs"
+diffsPath = rootPath </> "diffs"
 
 -- | The path to where commits are stored
 commitsPath :: FilePath
-commitsPath = rootPath ++ "/commits"
+commitsPath = rootPath </> "commits"
 
 -- | The path to where the object representing user-specified
 -- | configuration information is stored. Returnvalue is wrapped in
@@ -184,7 +198,7 @@ getConfigPath = (++) <$> Dir.getHomeDirectory <*> (return "/.horseconfig")
 
 -- | Paths to directories created by the implementation
 directories :: [FilePath]
-directories = [rootPath, diffsPath, commitsPath]
+directories = [rootPath, diffsPath, commitsPath, headContentsPath]
 
 -- | Paths to databases used in the implementation
 databasePaths :: [FilePath]
@@ -194,7 +208,7 @@ databasePaths = [diffsPath, commitsPath]
 -- | those files upon initialization of an empty repository
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
-    [ (headPath, Serialize.encode $ (Default.def :: Head))
+    [ (headHashPath, Serialize.encode $ (Default.def :: Hash))
     , (stagingAreaPath, Serialize.encode $ (Default.def :: StagingArea)) ]
 
 -- * utility functions
@@ -247,7 +261,7 @@ loadParent commit =
 refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
     base <- case baseRef of
-        "HEAD" -> headHash <$> loadHead -- TODO: constant?
+        "HEAD" -> loadHeadHash -- TODO: constant?
         someHash -> return $ stringToHash someHash
     final <- (hoistEither relatives) >>= applyRelatives base
     putStrLn' . show $ final
@@ -294,4 +308,24 @@ isRepositoryOrAncestorIsRepo
 
 -- | Identifies whether any commits have been made in the current repository
 commitsHaveBeenMade :: EitherT Error IO Bool
-commitsHaveBeenMade = ((/=) Default.def) <$> loadHead
+commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
+
+-- * diffing
+
+-- | (parameter may be a file or directory)
+diffWithHEAD :: [FilePath] -> IO Diff
+diffWithHEAD ([]) = return Default.def
+diffWithHEAD (filepath:_) = do
+    fileExistsInHead <- Dir.doesFileExist $ headContentsPath </> filepath
+    unless fileExistsInHead $ do
+        -- create the file
+        handle <- IO.openFile (headContentsPath </> filepath) IO.WriteMode
+        IO.hClose handle
+
+    Sh.shelly
+        . fmap Punycode.encode
+        . Sh.errExit False -- ignore exitcode; doesn't mean failure here
+        $ Sh.run (decodeString "git") [Text.pack "diff", Text.pack $ headContentsPath </> filepath, Text.pack filepath ]
+
+getStagedDiff :: StagingArea -> IO Diff
+getStagedDiff = diffWithHEAD . files

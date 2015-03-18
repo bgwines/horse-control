@@ -5,11 +5,13 @@
 
 -- | Data types used in horse-config implementation
 module Horse.Types(
--- * Records
+-- * Records and their accessor functions
   UserInfo(..)
 , Commit(..)
-, Head(..)
+
 , StagingArea(..)
+, files
+
 , Config(..)
 
 -- * Aliases
@@ -52,7 +54,7 @@ instance Default Hash where
     def = empty
 
 -- | The difference between two states of the filesystem.
-type Diff = [(FilePath, String, String)]
+type Diff = ByteString
 
 -- `toGregorian . utctDay` on a date
 -- | Date information to be stored in commits.
@@ -85,18 +87,6 @@ data Config = Config {
 
 instance Serialize Config
 
--- | Functionally very analogous to Git's HEAD pointer.
-data Head = Head {
-    headHash :: Hash
-} deriving (Eq, Show, Generic)
-
-instance Serialize Head
-
--- why doesn't Generic handle this?
-instance Default Head where
-    def :: Head
-    def = Head { headHash = def }
-
 -- | The staging area. Doesn't explicitly store the diffs; those are computed on the fly.
 data StagingArea = StagingArea {
     adds :: [FilePath],
@@ -105,6 +95,9 @@ data StagingArea = StagingArea {
 } deriving (Eq, Show, Generic)
 
 instance Serialize StagingArea
+
+files :: StagingArea -> [FilePath]
+files (StagingArea adds mods dels) = adds ++ mods ++ dels
 
 instance Default StagingArea where
     def :: StagingArea

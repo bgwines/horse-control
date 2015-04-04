@@ -11,7 +11,6 @@ module Horse.Commands.Porcelain
 , Horse.Commands.Porcelain.stage
 , Horse.Commands.Porcelain.checkout
 , Horse.Commands.Porcelain.commit
-, Horse.Commands.Porcelain.commit'
 , Horse.Commands.Porcelain.hshow
 , Horse.Commands.Porcelain.log
 ) where
@@ -28,7 +27,8 @@ import Control.Monad.Trans.Either
 
 -- qualified imports
 
-import qualified Data.Convertible as Convert
+import qualified Filediff as FD
+import qualified Filediff.Types as FD
 
 import qualified System.IO as IO
 import qualified System.Directory as Dir
@@ -91,8 +91,9 @@ config maybeName maybeEmail = do
 
 -- | Initializes an empty repository in the current directory. If
 -- | one currently exists, it aborts.
-init :: IO ()
-init = do
+init :: Maybe Verbosity -> IO ()
+init maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
     repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.rootPath
 
     -- initialize config file; it's read from
@@ -113,8 +114,9 @@ init = do
         sequence $ map HIO.createFileWithContents HIO.serializationPathsAndInitialContents
 
         currDir <- Dir.getCurrentDirectory
-        putStrLn $ "Initialized existing horse-control repository in"
-            ++ currDir ++ "/" ++ HIO.rootPath
+        unless (verbosity == Quiet) $
+            putStrLn $ "Initialized existing horse-control repository in"
+                ++ currDir ++ "/" ++ HIO.rootPath
 
 -- | Prints the difference between the working directory and HEAD
 -- TODO: check initialization has happened (all functions should do this)
@@ -144,26 +146,15 @@ stage path = do
 
 -- | Writes the staging area as a commit to disk. Currently takes a
 -- | single parameter of a message.
-commit :: Maybe String -> EitherT Error IO ()
-commit maybeMessage = do
+commit :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
+commit maybeMessage maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+    let message = fromMaybe "default message" maybeMessage
+
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    createdCommit <- commit' maybeMessage
-
-    putStrLn' $ "[<branch> "
-        ++ (show . ByteString.take 8 $ hash createdCommit)
-        ++  "] " ++ (message createdCommit)
-    putStrLn' $ "0" ++ " files changed, "
-        ++ "0" ++ " insertions(+), "
-        ++ "0" ++ " deletions(-)"
-
--- | Writes the staging area as a commit to disk. Currently takes a
--- | single parameter of a message. This function is exposed only for
--- | testing purposes.
-commit' :: Maybe String -> EitherT Error IO Commit
-commit' maybeMessage = do
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
 
     isFirstCommit <- ((==) Default.def) <$> HIO.loadHeadHash
@@ -174,8 +165,6 @@ commit' maybeMessage = do
     stagedDiff <- HIO.loadStagingArea >>= liftIO . HIO.getStagedDiff
 
     config <- HIO.loadConfig
-
-    let message = fromMaybe "default message" maybeMessage
 
     let hashlessCommit = Commit {
         author                  = userInfo config
@@ -195,8 +184,15 @@ commit' maybeMessage = do
 
     liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
 
-    right completeCommit
+    unless (verbosity == Quiet) $ do
+        putStrLn' $ "[<branch> "
+            ++ (show . ByteString.take 8 $ hash completeCommit)
+            ++  "] " ++ message
+        putStrLn' $ "0" ++ " files changed, "
+            ++ "0" ++ " insertions(+), "
+            ++ "0" ++ " deletions(-)"
 
+    right completeCommit
     where
         -- TODO: where does this go?
         hashCommit :: Commit -> Hash
@@ -214,7 +210,12 @@ checkout ref = do
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    soughtCommit <- HIO.loadCommit . stringToHash $ ref
+    hash <- HIO.refToHash ref
+    soughtCommit <- HIO.loadCommit hash
+    ancestors <- HIO.loadHistory soughtCommit
+    let diffs :: [FD.Diff] = map diffWithPrimaryParent ancestors
+    mapM_ HIO.applyDiff (reverse diffs)
+
     putStrLn' $ "running command \"checkout\" with args "
     liftIO . print $ ref
     liftIO . print $ soughtCommit

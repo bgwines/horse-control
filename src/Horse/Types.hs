@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
 
@@ -14,10 +15,10 @@ module Horse.Types(
 
 , Config(..)
 
+, Verbosity(..)
 -- * Aliases
 , Email
 , Hash
-, Diff
 , Relative(..)
 , Date
 , Error
@@ -25,16 +26,31 @@ module Horse.Types(
 
 -- imports
 
-import Prelude hiding (show, init, log)
+import Prelude hiding (init, log)
 
 import GHC.Generics
 
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+
+import qualified Filediff as FD
+import qualified Filediff.Sequence as FD
+import qualified Filediff.Types as FD
+
 -- imported functions
 
-import Data.Serialize (Serialize)
+import Data.Serialize (Serialize, put, get)
 
 import Data.Default (Default, def)
 import Data.ByteString (ByteString, empty)
+
+instance Serialize T.Text where
+    put = put . TE.encodeUtf8
+    get = fmap TE.decodeUtf8 get
+
+instance Serialize (FD.SeqDiff T.Text)
+instance Serialize FD.Filediff
+instance Serialize FD.Diff
 
 -- | Error type
 type Error = String
@@ -52,9 +68,6 @@ data Relative = Parent
 instance Default Hash where
     def :: Hash
     def = empty
-
--- | The difference between two states of the filesystem.
-type Diff = ByteString
 
 -- `toGregorian . utctDay` on a date
 -- | Date information to be stored in commits.
@@ -74,7 +87,7 @@ data Commit = Commit {
     date :: Date,
     hash :: Hash,
     parentHash :: Maybe Hash,
-    diffWithPrimaryParent :: Diff,
+    diffWithPrimaryParent :: FD.Diff,
     message :: String
 } deriving (Eq, Show, Generic)
 
@@ -86,6 +99,9 @@ data Config = Config {
 } deriving (Eq, Show, Generic)
 
 instance Serialize Config
+
+-- | Degree of printing to be executed by commands
+data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show)
 
 -- | The staging area. Doesn't explicitly store the diffs; those are computed on the fly.
 data StagingArea = StagingArea {

@@ -41,10 +41,12 @@ module Horse.IO
 , loadHistory
 , loadParent
 , isRepositoryOrAncestorIsRepo
+, refToHash
 
 -- * diffing
 , diffWithHEAD
 , getStagedDiff
+, applyDiff
 ) where
 
 -- imports
@@ -54,6 +56,9 @@ import Prelude hiding (init, log, null)
 import Control.Monad.Trans.Either
 
 -- qualified imports
+
+import qualified Filediff as FD
+import qualified Filediff.Types as FD
 
 import qualified Shelly as Sh
 
@@ -170,10 +175,7 @@ rootPath = ".horse"
 
 -- | The path to where the object representing HEAD is stored
 headHashPath :: FilePath
-headHashPath = rootPath </> "HEAD-hash"
-
-headContentsPath :: FilePath
-headContentsPath = rootPath </> "HEAD"
+headHashPath = rootPath </> "HEAD"
 
 -- | The path to where the object representing the staging area is stored
 stagingAreaPath :: FilePath
@@ -198,7 +200,7 @@ getConfigPath = (++) <$> Dir.getHomeDirectory <*> (return "/.horseconfig")
 
 -- | Paths to directories created by the implementation
 directories :: [FilePath]
-directories = [rootPath, diffsPath, commitsPath, headContentsPath]
+directories = [rootPath, diffsPath, commitsPath]
 
 -- | Paths to databases used in the implementation
 databasePaths :: [FilePath]
@@ -271,7 +273,7 @@ refToHash unparsedRef = do
         parentSyntax = '^'
 
         applyRelatives :: Hash -> [Relative] -> EitherT Error IO Hash
-        applyRelatives h relatives = left ""
+        applyRelatives h [] = right h
 
         baseRef :: String
         baseRef = takeWhile (not . isRelativeSyntax) unparsedRef
@@ -312,20 +314,16 @@ commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
 
 -- * diffing
 
+-- TODO TODO TODO diff in memory
 -- | (parameter may be a file or directory)
-diffWithHEAD :: [FilePath] -> IO Diff
+diffWithHEAD :: [FilePath] -> IO FD.Diff
 diffWithHEAD ([]) = return Default.def
-diffWithHEAD (filepath:_) = do
-    fileExistsInHead <- Dir.doesFileExist $ headContentsPath </> filepath
-    unless fileExistsInHead $ do
-        -- create the file
-        handle <- IO.openFile (headContentsPath </> filepath) IO.WriteMode
-        IO.hClose handle
+diffWithHEAD _ = error "TODO"
 
-    Sh.shelly
-        . fmap Punycode.encode
-        . Sh.errExit False -- ignore exitcode; doesn't mean failure here
-        $ Sh.run (decodeString "git") [Text.pack "diff", Text.pack $ headContentsPath </> filepath, Text.pack filepath ]
-
-getStagedDiff :: StagingArea -> IO Diff
+-- | Get a diff between the staging area and HEAD
+getStagedDiff :: StagingArea -> IO FD.Diff
 getStagedDiff = diffWithHEAD . files
+
+-- | True upon success, False upon failure
+applyDiff :: FD.Diff -> EitherT Error IO ()
+applyDiff = liftIO . (flip FD.applyToDirectory) "."

@@ -7,12 +7,15 @@ import System.Exit
 import qualified Horse.Types as Types
 import qualified Horse.Commands.Porcelain as Porcelain
 
+import Control.Monad
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Either.Combinators (isLeft, fromLeft)
 
 import Options.Applicative
+
+import Data.Default as Default
 
 data Command
     = Init
@@ -124,12 +127,12 @@ run cmd = do
         Config name email  -> fmap Right $ Porcelain.config name email
         Status             -> runEitherT $ Porcelain.status
         Stage path         -> runEitherT $ Porcelain.stage path
-        Commit message     -> runEitherT $ Porcelain.commit message
+        Commit message     -> runEitherT $ void $ Porcelain.commit message
         Checkout ref       -> runEitherT $ Porcelain.checkout ref
         Show ref           -> runEitherT $ Porcelain.hshow ref
         Log ref n          -> runEitherT $ Porcelain.log ref n
     if isLeft eitherSuccess
-        then putStrLn $ fromLeft "" eitherSuccess
+        then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()
 
 main :: IO ()

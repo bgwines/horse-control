@@ -1,6 +1,5 @@
-</>
-refs -- prefixes, branches, tags, etc...
-aliases
-checkout -> "load" ?
-error if not a repo
-homogeneous returntypes from commands for testability
+* refs -- prefixes, branches, tags, etc...
+* aliases
+* checkout -> "load" ?
+* layer above commands that handles things like passing in a printing function
+* be able to execute commands from any subdirectory of the root of the repository

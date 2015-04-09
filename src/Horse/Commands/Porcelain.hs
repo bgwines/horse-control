@@ -135,6 +135,7 @@ status maybeVerbosity = do
     unless (verbosity == Quiet) $ do
         putStrLn' "Staged changes:"
         liftIO . print $ stagingArea
+        putStrLn' ""
 
         putStrLn' "Unstaged changes:"
         liftIO . print $ unstagedFiles
@@ -250,19 +251,26 @@ hshow maybeRef = do
     (HIO.loadCommit ref) >>= (liftIO . print)
 
 -- | Prints the history from the current commit backwards
-log :: Maybe String -> Maybe Int -> EitherT Error IO ()
-log maybeRef maybeNumCommits = do
+log :: Maybe String -> Maybe Int -> Maybe Verbosity -> EitherT Error IO [Commit]
+log maybeRef maybeNumCommits maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
     commitsHaveBeenMade <- HIO.commitsHaveBeenMade
-    when commitsHaveBeenMade $ do
-        headHash <- HIO.loadHeadHash
+    if commitsHaveBeenMade
+        then do
+            headHash <- HIO.loadHeadHash
 
-        let ref = maybe headHash stringToHash maybeRef
+            let ref = maybe headHash stringToHash maybeRef
 
-        commit <- HIO.loadCommit ref
+            commit <- HIO.loadCommit ref
 
-        history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
-        (liftIO . print) $ message <$> history
+            history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
+
+            unless (verbosity == Quiet) $ do
+                (liftIO . print) $ message <$> history
+            right history
+        else right []

@@ -162,6 +162,7 @@ loadUnstagedFiles = do
         formatChar '.' = '-'
         formatChar ':' = '-'
         formatChar ch = ch
+
 -- * HEAD
 
 -- | Loads the object representing HEAD from disk

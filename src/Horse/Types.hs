@@ -122,7 +122,7 @@ instance Default StagingArea where
 
 data Status = Status {
     stagingArea :: StagingArea,
-    untrackedFiles :: [FilePath]
+    unstagedFiles :: [FilePath]
 } deriving (Eq, Show)
 
 -- | Degree of printing to be executed by commands

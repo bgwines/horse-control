@@ -42,7 +42,8 @@ import Data.Either.Combinators (isLeft, isRight, fromLeft, fromRight)
 
 import Horse.Types
 
-import qualified Horse.IO as HIO
+import qualified Horse.IO as H
+import qualified Horse.Utils as H
 import qualified Horse.Commands.Porcelain as H
 
 -- | Runs a test in its own empty directory.
@@ -87,24 +88,65 @@ testLog = do
         let messages = map Just ["A", "B", "C", "D"]
         commits <- mapM quietCommit messages
 
-        history <- reverse <$> HIO.loadHistory (last commits)
-
+        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
         liftIO $ commits @?= history
-        liftIO $ (length commits) @?= (length messages) -- WLOG
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft "" eitherSuccess)
+    return ()
+
+-- | Test the `horse log` command
+testLogEdgeCase1 :: Assertion
+testLogEdgeCase1 = do
+    H.init (Just Quiet)
+    eitherSuccess <- runEitherT $ do
+        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
+
+        liftIO $ [] @?= history
+
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft "" eitherSuccess)
+    return ()
+
+-- | Test the `horse log` command
+testLogEdgeCase2 :: Assertion
+testLogEdgeCase2 = do
+    H.init (Just Quiet)
+    eitherSuccess <- runEitherT $ do
+        let messages = map Just ["A", "B", "C", "D"]
+        commits <- mapM quietCommit messages
+
+        let ref = H.hashToString . hash $ commits !! 2
+        history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
+        liftIO $ (take (2+1) commits) @?= history
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft "" eitherSuccess)
+    return ()
+
+-- | Test the `horse log` command
+testLogEdgeCase3 :: Assertion
+testLogEdgeCase3 = do
+    H.init (Just Quiet)
+    eitherSuccess <- runEitherT $ do
+        let messages = map Just ["A", "B", "C", "D"]
+        commits <- mapM quietCommit messages
+
+        let ref = H.hashToString . hash $ head commits
+        history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
+        liftIO $ ([head commits]) @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft "" eitherSuccess)
     return ()
 
 -- | Test the `horse stage` command
-testStage :: Assertion
-testStage = do
+testStageCase1 :: Assertion
+testStageCase1 = do
     H.init (Just Quiet)
 
     createFileWithContents "a" "a"
 
     runEitherT $ H.stage "a"
 
-    eitherStagingArea <- runEitherT HIO.loadStagingArea
+    eitherStagingArea <- runEitherT H.loadStagingArea
 
     (Right ["a"]) @?= (adds <$> eitherStagingArea)
 
@@ -112,11 +154,46 @@ testStage = do
 
     (Right [])    @?= (dels <$> eitherStagingArea)
 
+-- | No files should result in an empty staging area
+testStageCase2 :: Assertion
+testStageCase2 = do
+    H.init (Just Quiet)
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    stagingArea <$> eitherStatus @?= Right Default.def
+
+-- | No files should result in no untracked files
+testStageCase3 :: Assertion
+testStageCase3 = do
+    H.init (Just Quiet)
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    unstagedFiles <$> eitherStatus @?= Right Default.def
+
+-- | Checks that we correctly identify all unstaged files
+testStageCase4 :: Assertion
+testStageCase4 = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+
+    stagingArea status @?= Default.def
+    unstagedFiles status @?= ["a"]
+    return ()
+
 -- | Test the `horse init` command
 testInit :: Assertion
 testInit = do
     H.init (Just Quiet)
-    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.repositoryDataDir
+    rootDirectoryCreated <- Dir.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
 -- | Verify that a command failed gracefully, as it should when run
@@ -146,7 +223,7 @@ testNoRepoShow = testNoRepo $ H.hshow Default.def
 
 -- | Test the command `horse log` when run without a repository
 testNoRepoLog :: Assertion
-testNoRepoLog = testNoRepo $ H.log Default.def Default.def
+testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 
 -- | Tests diffing. Assumes working `horse commit`
 --testCheckout :: Assertion
@@ -159,53 +236,9 @@ testNoRepoLog = testNoRepo $ H.log Default.def Default.def
     --return ()
     -- TODO
 
--- | No files should result in an empty staging area
-testStageEdgeCase1 :: Assertion
-testStageEdgeCase1 = do
-    H.init (Just Quiet)
-
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-
-    assertBool "`status` command should not fail" (isRight eitherStatus)
-    stagingArea <$> eitherStatus @?= Right Default.def
-
--- | No files should result in no untracked files
-testStageEdgeCase2 :: Assertion
-testStageEdgeCase2 = do
-    H.init (Just Quiet)
-
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-
-    assertBool "`status` command should not fail" (isRight eitherStatus)
-    untrackedFiles <$> eitherStatus @?= Right Default.def
-
--- | Checks that we correctly identify all untracked files
-testUntrackedFiles :: Assertion
-testUntrackedFiles = do
-    H.init (Just Quiet)
-
-    createFileWithContents "a" "a"
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-
-    assertBool "`status` command should not fail" (isRight eitherStatus)
-    let status = fromRight undefined eitherStatus
-
-    stagingArea status @?= Default.def
-    untrackedFiles status @?= ["a"]
-    return ()
-
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
-        "Testing `horse init`"
-        (runTest testInit) 
-    , testCase
-        "Testing `horse stage`"
-        (runTest testStage) 
-    , testCase
-        "Testing `horse log`"
-        (runTest testLog) 
-    , testCase
         "Testing command `status` run without a repo"
         (runTest testNoRepoStatus)
     , testCase
@@ -224,14 +257,32 @@ tests = testGroup "unit tests"
         "Testing command `log` run without a repo"
         (runTest testNoRepoLog)
     , testCase
-        "Testing identification of untracked files"
-        (runTest testUntrackedFiles)
+        "Testing `horse init`"
+        (runTest testInit)
     , testCase
-        "Testing command `stage` (edge case 1)"
-        (runTest testStageEdgeCase1)
+        "Testing `horse log`"
+        (runTest testLog)
     , testCase
-        "Testing command `stage` (edge case 2)"
-        (runTest testStageEdgeCase2)
+        "Testing `horse log` (edge case 1)"
+        (runTest testLogEdgeCase1)
+    , testCase
+        "Testing `horse log` (edge case 2)"
+        (runTest testLogEdgeCase2)
+    , testCase
+        "Testing `horse log` (edge case 3)"
+        (runTest testLogEdgeCase3)
+    , testCase
+        "Testing command `stage` (case 1)"
+        (runTest testStageCase1)
+    , testCase
+        "Testing command `stage` (case 2)"
+        (runTest testStageCase2)
+    , testCase
+        "Testing command `stage` (case 3)"
+        (runTest testStageCase3)
+    , testCase
+        "Testing command `stage` (case 4)"
+        (runTest testStageCase4)
     --, testCase
     --    "Testing diffs being stored in commits"
     --    (runTest testCheckout)

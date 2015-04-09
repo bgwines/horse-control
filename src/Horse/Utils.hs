@@ -4,7 +4,11 @@ module Horse.Utils
   eitherToMaybe
 , maybeToEither
 , fromEitherMaybeDefault
+
+-- * conversions
+
 , stringToHash
+, hashToString
 
 -- * general
 , putStrLn'
@@ -24,7 +28,7 @@ import Horse.Types
 
 import Control.Applicative ((<$>))
 
-import Data.ByteString (pack)
+import Data.ByteString (pack, unpack)
 
 import qualified Data.Default as Default
 
@@ -49,9 +53,15 @@ fromEitherMaybeDefault (Right x) Nothing  = x
 fromEitherMaybeDefault (Left  _) (Just y) = y
 fromEitherMaybeDefault (Right _) (Just y) = y
 
+-- * conversions
+
 -- | Conversion function for hashes
 stringToHash :: String -> Hash
-stringToHash = pack  . map Convert.convert
+stringToHash = pack . map Convert.convert
+
+-- | Conversion function for hashes (other direction)
+hashToString :: Hash -> String
+hashToString = map Convert.convert . unpack
 
 -- * general
 

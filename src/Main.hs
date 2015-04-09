@@ -27,7 +27,7 @@ data Command
     | Commit (Maybe String) (Maybe Types.Verbosity)
     | Checkout String (Maybe Types.Verbosity)
     | Show (Maybe String)
-    | Log (Maybe String) (Maybe Int)
+    | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
     deriving (Show)
 
 optQuiet = (optional $ option auto
@@ -87,6 +87,7 @@ parseLog = Log
             <> metavar "HISTORY-LENGTH"
             <> help "Number of commits to display in history." )
         )
+    <*> optQuiet
 
 parseVersion :: Parser Command
 parseVersion = pure Version
@@ -139,7 +140,7 @@ run cmd = do
         Stage path         -> runEitherT $ Porcelain.stage path
         Checkout ref v     -> runEitherT $ Porcelain.checkout ref v
         Show ref           -> runEitherT $ Porcelain.hshow ref
-        Log ref n          -> runEitherT $ Porcelain.log ref n
+        Log ref n v        -> runEitherT $ void $ Porcelain.log ref n v
         Status v           -> runEitherT $ void $ Porcelain.status v
         Commit msg v       -> runEitherT $ void $ Porcelain.commit msg v
     if isLeft eitherSuccess

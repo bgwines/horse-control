@@ -17,36 +17,44 @@ import Options.Applicative
 
 import Data.Default as Default
 
+-- | Schema for arguments to exposed commands
 data Command
-    = Init
+    = Init (Maybe Types.Verbosity)
     | Version
     | Config (Maybe String) (Maybe Types.Email)
-    | Status
+    | Status (Maybe Types.Verbosity)
     | Stage String
-    | Commit (Maybe String)
-    | Checkout String
+    | Commit (Maybe String) (Maybe Types.Verbosity)
+    | Checkout String (Maybe Types.Verbosity)
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int)
     deriving (Show)
 
-parseInit :: Parser Command
-parseInit = pure Init
+optQuiet = (optional $ option auto
+        ( long "quiet"
+        <> short 'q'
+        <> metavar "VERBOSITY"
+        <> help "How much logging to print during execution of the command" )
+    )
 
-parseStatus :: Parser Command
-parseStatus = pure Status
+parseInit :: Parser Command
+parseInit = Init <$> optQuiet
 
 parseConfig :: Parser Command
 parseConfig = Config
-     <$> (optional $ strOption
+    <$> (optional $ strOption
             ( long "name"
             <> metavar "NAME"
             <> help "User's name, to be displayed in commit messages." )
-         )
-     <*> (optional $ strOption
+        )
+    <*> (optional $ strOption
             ( long "email"
             <> metavar "EMAIL"
             <> help "User's e-mail, to be displayed in commit messages." )
-         )
+        )
+
+parseStatus :: Parser Command
+parseStatus = Status <$> optQuiet
 
 parseStage :: Parser Command
 parseStage = Stage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
@@ -57,25 +65,28 @@ parseCommit = Commit
             ( short 'm'
             <> metavar "COMMIT-MESSAGE" )
         )
+    <*> optQuiet
 
 parseCheckout :: Parser Command
-parseCheckout = Checkout <$> (argument str $ metavar "REF")
+parseCheckout = Checkout
+    <$> (argument str $ metavar "REF")
+    <*> optQuiet
 
 parseShow :: Parser Command
 parseShow = Show <$> (optional $ strOption (metavar "REF"))
 
 parseLog :: Parser Command
 parseLog = Log
-     <$> (optional $ argument str
+    <$> (optional $ argument str
             ( metavar "REF"
             <> help "Ref from which to print log." )
-         )
-     <*> (optional $ option auto
+        )
+    <*> (optional $ option auto
             ( long "length"
             <> short 'n'
             <> metavar "HISTORY-LENGTH"
             <> help "Number of commits to display in history." )
-         )
+        )
 
 parseVersion :: Parser Command
 parseVersion = pure Version
@@ -123,14 +134,14 @@ run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- case cmd of
         Version            -> fmap Right $ putStrLn "0.1.0.2"
-        Init               -> fmap Right $ Porcelain.init
+        Init v             -> fmap Right $ Porcelain.init v
         Config name email  -> fmap Right $ Porcelain.config name email
-        Status             -> runEitherT $ Porcelain.status
         Stage path         -> runEitherT $ Porcelain.stage path
-        Commit message     -> runEitherT $ void $ Porcelain.commit message
-        Checkout ref       -> runEitherT $ Porcelain.checkout ref
+        Checkout ref v     -> runEitherT $ Porcelain.checkout ref v
         Show ref           -> runEitherT $ Porcelain.hshow ref
         Log ref n          -> runEitherT $ Porcelain.log ref n
+        Status v           -> runEitherT $ void $ Porcelain.status v
+        Commit msg v       -> runEitherT $ void $ Porcelain.commit msg v
     if isLeft eitherSuccess
         then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()

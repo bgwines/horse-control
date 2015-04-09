@@ -6,6 +6,7 @@ module Horse.IO
 ( -- * staging area
   loadStagingArea
 , writeStagingArea
+, loadUnstagedFiles
 
 -- * HEAD
 , loadHeadHash
@@ -20,7 +21,7 @@ module Horse.IO
 , writeConfig
 
 -- * paths
-, rootPath
+, repositoryDataDir
 , headHashPath
 , stagingAreaPath
 , diffsPath
@@ -53,6 +54,8 @@ module Horse.IO
 
 import Prelude hiding (init, log, null)
 
+import Data.Monoid
+import Control.Monad
 import Control.Monad.Trans.Either
 
 -- qualified imports
@@ -80,13 +83,17 @@ import qualified Data.Text.Punycode as Punycode (encode)
 
 -- imported functions
 
+import Data.List (foldl')
+
 import Data.Maybe (isJust, fromJust)
+
+import Data.Time.Clock (getCurrentTime, utctDay)
 
 import Filesystem.Path (parent, null)
 import Filesystem.Path.CurrentOS (decodeString, encodeString)
 
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad ((>>=), return, unless)
+import Control.Applicative
+import Control.Monad
 import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
@@ -122,6 +129,39 @@ loadStagingArea = loadFromFile stagingAreaPath
 writeStagingArea :: StagingArea -> IO ()
 writeStagingArea = writeToFile stagingAreaPath
 
+loadUnstagedFiles :: EitherT Error IO [FilePath]
+loadUnstagedFiles = do
+    headExists <- commitsHaveBeenMade
+    diffWithRoot <- if headExists
+        then do
+            headHash <- loadHeadHash
+            commit <- loadCommit headHash
+
+            diffs <- (map diffWithPrimaryParent) <$> loadHistory commit
+            let diffWithRoot = foldl' mappend mempty diffs
+            return diffWithRoot
+        else return mempty
+
+    headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
+    liftIO $ Dir.createDirectory headDir
+    liftIO $ FD.applyToDirectory diffWithRoot headDir
+
+    diffWithHEAD <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [headDir, repositoryDataDir]
+
+    liftIO $ Dir.removeDirectoryRecursive headDir
+    return $ map FD.comp . FD.filediffs $ diffWithHEAD
+    where
+        -- | Gives a name of a directory that is pretty much
+        -- guaranteed to exist, so it's free for creation.
+        getTempDirectory :: IO FilePath
+        getTempDirectory = (map formatChar . show) <$> getCurrentTime
+
+        -- | Some characters can't be in directory names.
+        formatChar :: Char -> Char
+        formatChar ' ' = '-'
+        formatChar '.' = '-'
+        formatChar ':' = '-'
+        formatChar ch = ch
 -- * HEAD
 
 -- | Loads the object representing HEAD from disk
@@ -170,24 +210,24 @@ writeConfig config = do
 -- * paths
 
 -- | The root path for all (horse-config)-stored data
-rootPath :: FilePath
-rootPath = ".horse"
+repositoryDataDir :: FilePath
+repositoryDataDir = ".horse"
 
 -- | The path to where the object representing HEAD is stored
 headHashPath :: FilePath
-headHashPath = rootPath </> "HEAD"
+headHashPath = repositoryDataDir </> "HEAD"
 
 -- | The path to where the object representing the staging area is stored
 stagingAreaPath :: FilePath
-stagingAreaPath = rootPath </> "stagingArea"
+stagingAreaPath = repositoryDataDir </> "stagingArea"
 
 -- | The path to where diffs are stored
 diffsPath :: FilePath
-diffsPath = rootPath </> "diffs"
+diffsPath = repositoryDataDir </> "diffs"
 
 -- | The path to where commits are stored
 commitsPath :: FilePath
-commitsPath = rootPath </> "commits"
+commitsPath = repositoryDataDir </> "commits"
 
 -- | The path to where the object representing user-specified
 -- | configuration information is stored. Returnvalue is wrapped in
@@ -200,7 +240,7 @@ getConfigPath = (++) <$> Dir.getHomeDirectory <*> (return "/.horseconfig")
 
 -- | Paths to directories created by the implementation
 directories :: [FilePath]
-directories = [rootPath, diffsPath, commitsPath]
+directories = [repositoryDataDir, diffsPath, commitsPath]
 
 -- | Paths to databases used in the implementation
 databasePaths :: [FilePath]
@@ -291,7 +331,7 @@ refToHash unparsedRef = do
 
 -- | Returns whether the specified directory is part of a repository.
 isRepo :: FilePath -> IO Bool
-isRepo = Dir.doesDirectoryExist . (\path -> path </> rootPath)
+isRepo = Dir.doesDirectoryExist . (flip (</>) $ repositoryDataDir)
 
 -- | Gets the ancestors of the current directory
 filesystemAncestors :: IO [FilePath]

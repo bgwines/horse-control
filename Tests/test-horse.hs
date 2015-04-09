@@ -36,7 +36,7 @@ import Control.Monad ((>>=), return, when)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad.IO.Class (liftIO)
 
-import Data.Either.Combinators (isLeft, fromLeft)
+import Data.Either.Combinators (isLeft, isRight, fromLeft, fromRight)
 
 -- horse imports
 
@@ -70,6 +70,12 @@ runTest t = do
                 formatChar ':' = '-'
                 formatChar ch = ch
 
+createFileWithContents :: FilePath -> String -> IO ()
+createFileWithContents filepath contents = do
+    handle <- IO.openFile filepath IO.WriteMode
+    IO.hPutStr handle contents
+    IO.hClose handle
+
 quietCommit :: Maybe String -> EitherT Error IO Commit
 quietCommit = (flip H.commit $ Just Quiet)
 
@@ -94,26 +100,23 @@ testStage :: Assertion
 testStage = do
     H.init (Just Quiet)
 
-    let addedFile = "a"
-    handle <- IO.openFile addedFile IO.WriteMode
-    IO.hPutStr handle "a"
-    IO.hClose handle
+    createFileWithContents "a" "a"
 
-    runEitherT $ H.stage addedFile
+    runEitherT $ H.stage "a"
 
     eitherStagingArea <- runEitherT HIO.loadStagingArea
 
-    (Right [addedFile]) @?= (adds <$> eitherStagingArea)
+    (Right ["a"]) @?= (adds <$> eitherStagingArea)
 
-    (Right [])          @?= (mods <$> eitherStagingArea)
+    (Right [])    @?= (mods <$> eitherStagingArea)
 
-    (Right [])          @?= (dels <$> eitherStagingArea)
+    (Right [])    @?= (dels <$> eitherStagingArea)
 
 -- | Test the `horse init` command
 testInit :: Assertion
 testInit = do
     H.init (Just Quiet)
-    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.rootPath
+    rootDirectoryCreated <- Dir.doesDirectoryExist HIO.repositoryDataDir
     rootDirectoryCreated @?= True
 
 -- | Verify that a command failed gracefully, as it should when run
@@ -123,7 +126,7 @@ testNoRepo = (=<<) ((@?=) True . isLeft) . runEitherT
 
 -- | Test the command `horse status` when run without a repository
 testNoRepoStatus :: Assertion
-testNoRepoStatus = testNoRepo $ H.status
+testNoRepoStatus = testNoRepo $ H.status (Just Quiet)
 
 -- | Test the command `horse stage` when run without a repository
 testNoRepoStage :: Assertion
@@ -131,7 +134,7 @@ testNoRepoStage = testNoRepo $ H.stage Default.def
 
 -- | Test the command `horse checkout` when run without a repository
 testNoRepoCheckout :: Assertion
-testNoRepoCheckout = testNoRepo $ H.checkout Default.def
+testNoRepoCheckout = testNoRepo $ H.checkout Default.def (Just Quiet)
 
 -- | Test the command `horse commit` when run without a repository
 testNoRepoCommit :: Assertion
@@ -146,16 +149,49 @@ testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log Default.def Default.def
 
 -- | Tests diffing. Assumes working `horse commit`
-testCheckout :: Assertion
-testCheckout = do
+--testCheckout :: Assertion
+--testCheckout = do 
+    --H.init (Just Quiet)
+
+    --createFileWithContents "a" "a"
+
+    --runEitherT $ H.stage addedFile
+    --return ()
+    -- TODO
+
+-- | No files should result in an empty staging area
+testStageEdgeCase1 :: Assertion
+testStageEdgeCase1 = do
     H.init (Just Quiet)
 
-    let addedFile = "a"
-    handle <- IO.openFile addedFile IO.WriteMode
-    IO.hPutStr handle "a"
-    IO.hClose handle
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
 
-    runEitherT $ H.stage addedFile
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    stagingArea <$> eitherStatus @?= Right Default.def
+
+-- | No files should result in no untracked files
+testStageEdgeCase2 :: Assertion
+testStageEdgeCase2 = do
+    H.init (Just Quiet)
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    untrackedFiles <$> eitherStatus @?= Right Default.def
+
+-- | Checks that we correctly identify all untracked files
+testUntrackedFiles :: Assertion
+testUntrackedFiles = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+
+    stagingArea status @?= Default.def
+    untrackedFiles status @?= ["a"]
     return ()
 
 tests :: TestTree
@@ -188,8 +224,18 @@ tests = testGroup "unit tests"
         "Testing command `log` run without a repo"
         (runTest testNoRepoLog)
     , testCase
-        "Testing diffs being stored in commits"
-        (runTest testCheckout) ]
+        "Testing identification of untracked files"
+        (runTest testUntrackedFiles)
+    , testCase
+        "Testing command `stage` (edge case 1)"
+        (runTest testStageEdgeCase1)
+    , testCase
+        "Testing command `stage` (edge case 2)"
+        (runTest testStageEdgeCase2)
+    --, testCase
+    --    "Testing diffs being stored in commits"
+    --    (runTest testCheckout)
+    ]
 
 main :: IO ()
 main = defaultMain tests

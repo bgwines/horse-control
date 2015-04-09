@@ -90,11 +90,11 @@ config maybeName maybeEmail = do
         HIO.writeConfig $ Config { userInfo = updatedUserInfo }
 
 -- | Initializes an empty repository in the current directory. If
--- | one currently exists, it aborts.
+--   one currently exists, it aborts.
 init :: Maybe Verbosity -> IO ()
 init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
-    repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.rootPath
+    repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.repositoryDataDir
 
     -- initialize config file; it's read from
     -- in this function and hence needs to exist
@@ -116,20 +116,33 @@ init maybeVerbosity = do
         currDir <- Dir.getCurrentDirectory
         unless (verbosity == Quiet) $
             putStrLn $ "Initialized existing horse-control repository in"
-                ++ currDir ++ "/" ++ HIO.rootPath
+                ++ currDir ++ "/" ++ HIO.repositoryDataDir
 
 -- | Prints the difference between the working directory and HEAD
 -- TODO: check initialization has happened (all functions should do this)
-status :: EitherT Error IO ()
-status = do
+status :: Maybe Verbosity -> EitherT Error IO Status
+status maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    HIO.loadStagingArea >>= (liftIO . print)
+    stagingArea <- HIO.loadStagingArea
+    unstagedFiles <- (HIO.loadUnstagedFiles)
+    let currentStatus = Status stagingArea unstagedFiles
+
+    unless (verbosity == Quiet) $ do
+        putStrLn' "Staged changes:"
+        liftIO . print $ stagingArea
+
+        putStrLn' "Unstaged changes:"
+        liftIO . print $ unstagedFiles
+
+    return currentStatus
 
 -- | Adds the specified modification / addition / deletion of the
--- | specified file to the staging area
+--   specified file to the staging area
 stage :: String -> EitherT Error IO ()
 stage path = do
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
@@ -145,7 +158,7 @@ stage path = do
     liftIO $ HIO.writeStagingArea updatedStagingArea
 
 -- | Writes the staging area as a commit to disk. Currently takes a
--- | single parameter of a message.
+--   single parameter of a message.
 commit :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
 commit maybeMessage maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
@@ -203,9 +216,11 @@ commit maybeMessage maybeVerbosity = do
             . Serialize.encode
 
 -- | Sets all tracked files to their state in the specified commit
--- | TODO: ref
-checkout :: String -> EitherT Error IO ()
-checkout ref = do
+--   TODO: ref
+checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
+checkout ref maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
@@ -216,13 +231,14 @@ checkout ref = do
     let diffs :: [FD.Diff] = map diffWithPrimaryParent ancestors
     mapM_ HIO.applyDiff (reverse diffs)
 
-    putStrLn' $ "running command \"checkout\" with args "
-    liftIO . print $ ref
-    liftIO . print $ soughtCommit
+    unless (verbosity == Quiet) $ do
+        putStrLn' $ "running command \"checkout\" with args "
+        liftIO . print $ ref
+        liftIO . print $ soughtCommit
     -- TODO
 
 -- | Shows the specified commit. With no arguments, assumes a single
--- | argument of HEAD.
+--   argument of HEAD.
 hshow :: Maybe String -> EitherT Error IO ()
 hshow maybeRef = do
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo

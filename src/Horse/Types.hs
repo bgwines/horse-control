@@ -15,7 +15,10 @@ module Horse.Types(
 
 , Config(..)
 
+, Status(..)
+
 , Verbosity(..)
+
 -- * Aliases
 , Email
 , Hash
@@ -49,6 +52,7 @@ instance Serialize T.Text where
     get = fmap TE.decodeUtf8 get
 
 instance Serialize (FD.SeqDiff T.Text)
+instance Serialize FD.FileChange
 instance Serialize FD.Filediff
 instance Serialize FD.Diff
 
@@ -62,7 +66,7 @@ type Email = String
 type Hash = ByteString
 
 -- | Data type to represent references relative to a commit
--- | (e.g. ^ or ~ from Git)
+--   (e.g. ^ or ~ from Git)
 data Relative = Parent
 
 instance Default Hash where
@@ -100,9 +104,6 @@ data Config = Config {
 
 instance Serialize Config
 
--- | Degree of printing to be executed by commands
-data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show)
-
 -- | The staging area. Doesn't explicitly store the diffs; those are computed on the fly.
 data StagingArea = StagingArea {
     adds :: [FilePath],
@@ -118,3 +119,11 @@ files (StagingArea adds mods dels) = adds ++ mods ++ dels
 instance Default StagingArea where
     def :: StagingArea
     def = StagingArea { adds = def, mods = def, dels = def }
+
+data Status = Status {
+    stagingArea :: StagingArea,
+    untrackedFiles :: [FilePath]
+} deriving (Eq, Show)
+
+-- | Degree of printing to be executed by commands
+data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show, Read)

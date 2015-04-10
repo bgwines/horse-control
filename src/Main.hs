@@ -137,9 +137,9 @@ run cmd = do
         Version            -> fmap Right $ putStrLn "0.1.0.2"
         Init v             -> fmap Right $ Porcelain.init v
         Config name email  -> fmap Right $ Porcelain.config name email
-        Stage path         -> runEitherT $ Porcelain.stage path
         Checkout ref v     -> runEitherT $ Porcelain.checkout ref v
         Show ref           -> runEitherT $ Porcelain.hshow ref
+        Stage path         -> runEitherT $ void $ Porcelain.stage path
         Log ref n v        -> runEitherT $ void $ Porcelain.log ref n v
         Status v           -> runEitherT $ void $ Porcelain.status v
         Commit msg v       -> runEitherT $ void $ Porcelain.commit msg v

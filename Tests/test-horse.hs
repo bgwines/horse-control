@@ -138,8 +138,8 @@ testLogEdgeCase3 = do
     return ()
 
 -- | Test the `horse stage` command
-testStageCase1 :: Assertion
-testStageCase1 = do
+testStage :: Assertion
+testStage = do
     H.init (Just Quiet)
 
     createFileWithContents "a" "a"
@@ -155,8 +155,8 @@ testStageCase1 = do
     (Right [])    @?= (dels <$> eitherStagingArea)
 
 -- | No files should result in an empty staging area
-testStageCase2 :: Assertion
-testStageCase2 = do
+testStatusCase1 :: Assertion
+testStatusCase1 = do
     H.init (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -165,8 +165,8 @@ testStageCase2 = do
     stagingArea <$> eitherStatus @?= Right Default.def
 
 -- | No files should result in no untracked files
-testStageCase3 :: Assertion
-testStageCase3 = do
+testStatusCase2 :: Assertion
+testStatusCase2 = do
     H.init (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -175,8 +175,8 @@ testStageCase3 = do
     unstagedFiles <$> eitherStatus @?= Right Default.def
 
 -- | Checks that we correctly identify all unstaged files
-testStageCase4 :: Assertion
-testStageCase4 = do
+testStatusCase3 :: Assertion
+testStatusCase3 = do
     H.init (Just Quiet)
 
     createFileWithContents "a" "a"
@@ -187,6 +187,52 @@ testStageCase4 = do
 
     stagingArea status @?= Default.def
     unstagedFiles status @?= ["a"]
+    return ()
+
+-- | Checks that the staging area is properly cleared after commits
+testStatusCase4 :: Assertion
+testStatusCase4 = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+
+    runEitherT $ quietCommit (Just "added \"a\"")
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    status @?= Default.def
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "b"
+    runEitherT $ quietCommit (Just "added \"b\"")
+
+    appendFile "a" "aaaa"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    status @?= Status (StagingArea [] [] []) ["a"]
+
+    return ()
+
+-- Checks that the staging area recognizes modifications to files
+testStatusCase5 :: Assertion
+testStatusCase5 = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT $ quietCommit Nothing
+
+    appendFile "a" "bcd"
+    runEitherT $ H.stage "a"
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    status @?= Status (StagingArea [] ["a"] []) []
+
     return ()
 
 -- | Test the `horse init` command
@@ -272,17 +318,23 @@ tests = testGroup "unit tests"
         "Testing `horse log` (edge case 3)"
         (runTest testLogEdgeCase3)
     , testCase
-        "Testing command `stage` (case 1)"
-        (runTest testStageCase1)
+        "Testing command `stage`"
+        (runTest testStage)
     , testCase
-        "Testing command `stage` (case 2)"
-        (runTest testStageCase2)
+        "Testing command `status` (case 1)"
+        (runTest testStatusCase1)
     , testCase
-        "Testing command `stage` (case 3)"
-        (runTest testStageCase3)
+        "Testing command `status` (case 2)"
+        (runTest testStatusCase2)
     , testCase
-        "Testing command `stage` (case 4)"
-        (runTest testStageCase4)
+        "Testing command `status` (case 3)"
+        (runTest testStatusCase3)
+    , testCase
+        "Testing command `status` (case 4)"
+        (runTest testStatusCase4)
+    , testCase
+        "Testing command `status` (case 5)"
+        (runTest testStatusCase5)
     --, testCase
     --    "Testing diffs being stored in commits"
     --    (runTest testCheckout)

@@ -54,6 +54,8 @@ module Horse.IO
 
 import Prelude hiding (init, log, null)
 
+import Data.Maybe
+
 import Data.Monoid
 import Control.Monad
 import Control.Monad.Trans.Either
@@ -131,37 +133,15 @@ writeStagingArea = writeToFile stagingAreaPath
 
 loadUnstagedFiles :: EitherT Error IO [FilePath]
 loadUnstagedFiles = do
-    headExists <- commitsHaveBeenMade
-    diffWithRoot <- if headExists
-        then do
-            headHash <- loadHeadHash
-            commit <- loadCommit headHash
+    allFilesDiff <- diffWithHEAD Nothing
 
-            diffs <- (map diffWithPrimaryParent) <$> loadHistory commit
-            let diffWithRoot = foldl' mappend mempty diffs
-            return diffWithRoot
-        else return mempty
+    stagedFiles <- files <$> loadStagingArea
 
-    headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
-    liftIO $ Dir.createDirectory headDir
-    liftIO $ FD.applyToDirectory diffWithRoot headDir
-
-    diffWithHEAD <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [headDir, repositoryDataDir]
-
-    liftIO $ Dir.removeDirectoryRecursive headDir
-    return $ map FD.comp . FD.filediffs $ diffWithHEAD
-    where
-        -- | Gives a name of a directory that is pretty much
-        -- guaranteed to exist, so it's free for creation.
-        getTempDirectory :: IO FilePath
-        getTempDirectory = (map formatChar . show) <$> getCurrentTime
-
-        -- | Some characters can't be in directory names.
-        formatChar :: Char -> Char
-        formatChar ' ' = '-'
-        formatChar '.' = '-'
-        formatChar ':' = '-'
-        formatChar ch = ch
+    right
+        $ filter (not . (flip elem $ stagedFiles))
+        . map FD.comp
+        . FD.filediffs
+        $ allFilesDiff
 
 -- * HEAD
 
@@ -355,15 +335,57 @@ commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
 
 -- * diffing
 
--- TODO TODO TODO diff in memory
--- | (parameter may be a file or directory)
-diffWithHEAD :: [FilePath] -> IO FD.Diff
-diffWithHEAD ([]) = return Default.def
-diffWithHEAD _ = error "TODO"
+-- | Pass in `Nothing` to diff all files; otherwise, pass in
+-- the files to diff
+diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
+diffWithHEAD maybeFilesToDiff = do
+    headExists <- commitsHaveBeenMade
+    diffWithRoot <- if headExists
+        then do
+            headHash <- loadHeadHash
+            commit <- loadCommit headHash
+
+            diffs <- (reverse . map diffWithPrimaryParent) <$> loadHistory commit
+            let diffWithRoot = foldl' mappend mempty diffs
+            return diffWithRoot
+        else return mempty
+
+    -- TODO: no EitherT here?
+    headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
+    liftIO $ Dir.createDirectory headDir
+    liftIO $ FD.applyToDirectory diffWithRoot headDir
+
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [headDir, repositoryDataDir]
+
+    liftIO $ Dir.removeDirectoryRecursive headDir
+
+    if isNothing maybeFilesToDiff
+        then right allFilesDiff
+        else do
+            let filesToDiff = fromMaybe undefined maybeFilesToDiff
+            -- `comp` instead of `base` because `comp` is ".", whereas
+            -- `base` is ".horse/<temp directory>"
+            right
+                $ FD.Diff
+                . filter ((flip elem $ filesToDiff) . FD.comp)
+                . FD.filediffs
+                $ allFilesDiff
+    where
+        -- | Gives a name of a directory that is pretty much
+        -- guaranteed to exist, so it's free for creation.
+        getTempDirectory :: IO FilePath
+        getTempDirectory = (map formatChar . show) <$> getCurrentTime
+
+        -- | Some characters can't be in directory names.
+        formatChar :: Char -> Char
+        formatChar ' ' = '-'
+        formatChar '.' = '-'
+        formatChar ':' = '-'
+        formatChar ch = ch
 
 -- | Get a diff between the staging area and HEAD
-getStagedDiff :: StagingArea -> IO FD.Diff
-getStagedDiff = diffWithHEAD . files
+getStagedDiff :: StagingArea -> EitherT Error IO FD.Diff
+getStagedDiff = diffWithHEAD . Just . files
 
 -- | True upon success, False upon failure
 applyDiff :: FD.Diff -> EitherT Error IO ()

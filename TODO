@@ -3,3 +3,5 @@
 * checkout -> "load" ?
 * layer above commands that handles things like passing in a printing function
 * be able to execute commands from any subdirectory of the root of the repository
+* dupes in staging area
+* input validation

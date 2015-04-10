@@ -125,5 +125,9 @@ data Status = Status {
     unstagedFiles :: [FilePath]
 } deriving (Eq, Show)
 
+instance Default Status where
+    def :: Status
+    def = Status def def
+
 -- | Degree of printing to be executed by commands
 data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show, Read)

@@ -11,6 +11,7 @@ module Horse.Utils
 , hashToString
 
 -- * general
+, print'
 , putStrLn'
 , iterateMaybe
 , toMaybe
@@ -64,6 +65,10 @@ hashToString :: Hash -> String
 hashToString = map Convert.convert . unpack
 
 -- * general
+
+-- | `print` but for the `EitherT` monad
+print' :: (Show a) => a -> EitherT b IO ()
+print' = liftIO . print
 
 -- | `putStrLn` but for the `EitherT` monad
 putStrLn' :: String -> EitherT a IO ()

@@ -59,6 +59,7 @@ import Horse.Types
 import Horse.Utils
     ( stringToHash
     , (|<$>|)
+    , print'
     , putStrLn'
     , fromEitherMaybeDefault )
 
@@ -129,7 +130,7 @@ status maybeVerbosity = do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
     stagingArea <- HIO.loadStagingArea
-    unstagedFiles <- (HIO.loadUnstagedFiles)
+    unstagedFiles <- HIO.loadUnstagedFiles
     let currentStatus = Status stagingArea unstagedFiles
 
     unless (verbosity == Quiet) $ do
@@ -144,19 +145,21 @@ status maybeVerbosity = do
 
 -- | Adds the specified modification / addition / deletion of the
 --   specified file to the staging area
-stage :: String -> EitherT Error IO ()
+stage :: String -> EitherT Error IO StagingArea
 stage path = do
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    stagingArea <- HIO.loadStagingArea
+    change <- (FD.change . head . FD.filediffs) <$> (HIO.diffWithHEAD (Just [path]))
 
-    let updatedStagingArea = case 0 of 0 -> stagingArea { adds = path : (adds stagingArea) }
-                                       1 -> stagingArea { mods = path : (mods stagingArea) }
-                                       2 -> stagingArea { dels = path : (dels stagingArea) }
-                                       _   -> error "undefined flag"
+    stagingArea <- HIO.loadStagingArea
+    let updatedStagingArea = case change of FD.Add _ -> stagingArea { adds = path : (adds stagingArea) }
+                                            FD.Mod _ -> stagingArea { mods = path : (mods stagingArea) }
+                                            FD.Del _ -> stagingArea { dels = path : (dels stagingArea) }
+
     liftIO $ HIO.writeStagingArea updatedStagingArea
+    right updatedStagingArea
 
 -- | Writes the staging area as a commit to disk. Currently takes a
 --   single parameter of a message.
@@ -176,7 +179,7 @@ commit maybeMessage maybeVerbosity = do
         then right Nothing
         else HIO.loadHeadHash >>= (fmap Just . HIO.loadCommit)
 
-    stagedDiff <- HIO.loadStagingArea >>= liftIO . HIO.getStagedDiff
+    stagedDiff <- HIO.loadStagingArea >>= HIO.getStagedDiff
 
     config <- HIO.loadConfig
 
@@ -198,9 +201,12 @@ commit maybeMessage maybeVerbosity = do
 
     liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
 
+    when (verbosity == Verbose) $ do
+        print' completeCommit
+
     unless (verbosity == Quiet) $ do
         putStrLn' $ "[<branch> "
-            ++ (show . ByteString.take 8 $ hash completeCommit)
+            ++ (show . ByteString.take 8 $ commitHash)
             ++  "] " ++ message
         putStrLn' $ "0" ++ " files changed, "
             ++ "0" ++ " insertions(+), "

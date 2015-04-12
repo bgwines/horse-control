@@ -109,7 +109,8 @@ import Horse.Utils
     , putStrLn'
     , iterateMaybe
     , toMaybe
-    , (</>))
+    , (</>)
+    , whenM )
 
 -- | Writes a serializable object to a file
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -255,6 +256,15 @@ destructivelyCreateDirectory dir = do
 
 -- * assorted
 
+-- | Checks out the specified hash to the specified directory
+checkoutToDirectory :: FilePath -> Hash -> EitherT Error IO ()
+checkoutToDirectory dir hash = do
+    history <- loadCommit hash >>= loadHistory
+    let diffs = reverse . map diffWithPrimaryParent $ history
+    let diffWithRoot = foldl' mappend mempty diffs
+
+    liftIO $ FD.applyToDirectory diffWithRoot dir
+
 -- | Loads the history from a given commit, all the way back
 -- | to the start. Returns in reverse order (latest commit at front)
 loadHistory :: Commit -> EitherT Error IO [Commit]
@@ -339,23 +349,13 @@ commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
 -- the files to diff
 diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
-    headExists <- commitsHaveBeenMade
-    diffWithRoot <- if headExists
-        then do
-            headHash <- loadHeadHash
-            commit <- loadCommit headHash
-
-            diffs <- (reverse . map diffWithPrimaryParent) <$> loadHistory commit
-            let diffWithRoot = foldl' mappend mempty diffs
-            return diffWithRoot
-        else return mempty
-
-    -- TODO: no EitherT here?
     headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
     liftIO $ Dir.createDirectory headDir
-    liftIO $ FD.applyToDirectory diffWithRoot headDir
 
-    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [headDir, repositoryDataDir]
+    whenM commitsHaveBeenMade $ do
+        loadHeadHash >>= checkoutToDirectory headDir
+
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [repositoryDataDir]
 
     liftIO $ Dir.removeDirectoryRecursive headDir
 

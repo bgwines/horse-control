@@ -15,6 +15,7 @@ module Horse.Utils
 , putStrLn'
 , iterateMaybe
 , toMaybe
+, whenM
 
 -- * combinators
 , (|$|)
@@ -22,6 +23,7 @@ module Horse.Utils
 , (</>)
 ) where
 
+import Control.Monad
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO)
 
@@ -85,6 +87,9 @@ iterateMaybe :: (a -> Maybe a) -> a -> [a]
 iterateMaybe f curr = case f curr of
     Nothing -> []
     (Just next) -> (:) next $ iterateMaybe f next
+
+whenM :: Monad m => m Bool -> m () -> m ()
+whenM mCond action = mCond >>= (flip when $ action)
 
 -- * combinators
 

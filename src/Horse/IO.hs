@@ -39,6 +39,7 @@ module Horse.IO
 , destructivelyCreateDirectory
 
 -- * assorted
+, checkoutToDirectory
 , loadHistory
 , loadParent
 , isRepositoryOrAncestorIsRepo
@@ -70,7 +71,7 @@ import qualified Shelly as Sh
 import qualified Data.Text as Text
 
 import qualified System.IO as IO
-import qualified System.Directory as Dir
+import qualified System.Directory as D
 
 import qualified Filesystem.Path (FilePath)
 
@@ -85,7 +86,7 @@ import qualified Data.Text.Punycode as Punycode (encode)
 
 -- imported functions
 
-import Data.List (foldl')
+import Data.List (foldl', (\\))
 
 import Data.Maybe (isJust, fromJust)
 
@@ -216,7 +217,7 @@ commitsPath = repositoryDataDir </> "commits"
 -- | the `IO` monad because getting the user's home directory is
 -- | a monadic operation.
 getConfigPath :: IO FilePath
-getConfigPath = (++) <$> Dir.getHomeDirectory <*> (return "/.horseconfig")
+getConfigPath = (++) <$> D.getHomeDirectory <*> (return "/.horseconfig")
 
 -- * lists
 
@@ -245,28 +246,44 @@ createFileWithContents (path, contents) = do
     IO.hClose handle
 
 -- | Creates a directory on disk at the specified destination, 
--- | destroying one if it was already there
+--   destroying one if it was already there
 destructivelyCreateDirectory :: FilePath -> IO ()
 destructivelyCreateDirectory dir = do
-    dirAlreadyExists <- Dir.doesDirectoryExist dir
+    dirAlreadyExists <- D.doesDirectoryExist dir
     if dirAlreadyExists
-        then Dir.removeDirectoryRecursive dir
+        then D.removeDirectoryRecursive dir
         else return ()
-    Dir.createDirectory dir
+    D.createDirectory dir
 
 -- * assorted
 
--- | Checks out the specified hash to the specified directory
+-- | Checks out the specified hash to the specified directory. NOTE:
+-- will entirely overwrite the contents of the specified directory;
+-- be careful.
 checkoutToDirectory :: FilePath -> Hash -> EitherT Error IO ()
 checkoutToDirectory dir hash = do
+    liftIO clearDirectory
     history <- loadCommit hash >>= loadHistory
     let diffs = reverse . map diffWithPrimaryParent $ history
     let diffWithRoot = foldl' mappend mempty diffs
 
     liftIO $ FD.applyToDirectory diffWithRoot dir
+    where
+        clearDirectory :: IO ()
+        clearDirectory = do
+            allContents <- liftIO $ D.getDirectoryContents dir
+            let toDelete = allContents \\ [repositoryDataDir, "..", "."]
+            mapM_ rm toDelete
+
+        rm :: FilePath -> IO ()
+        rm path = do
+            isFile <- D.doesFileExist path
+            if isFile
+                then D.removeFile path
+                else D.removeDirectoryRecursive path
 
 -- | Loads the history from a given commit, all the way back
--- | to the start. Returns in reverse order (latest commit at front)
+--   to the start. Returns in reverse order (latest commit at front)
 loadHistory :: Commit -> EitherT Error IO [Commit]
 loadHistory commit
     = liftIO
@@ -286,18 +303,17 @@ loadParent commit =
         else left $ "No parent for commit with hash " ++ (show . hash $ commit)
 
 -- | Given any string, attempt to convert it to a hash.
--- | Succeeds if the string is in a hash format, even if
--- | the hash is not a key in the database (no commits / diffs
--- | have been hashed with that key yet). Fails if the format
--- | is unexpected. Acceptable formats are listed in user-facing
--- | documentation
+--   Succeeds if the string is in a hash format, even if
+--   the hash is not a key in the database (no commits / diffs
+--   have been hashed with that key yet). Fails if the format
+--   is unexpected. Acceptable formats are listed in user-facing
+--   documentation
 refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
     base <- case baseRef of
-        "HEAD" -> loadHeadHash -- TODO: constant?
+        "HEAD" -> loadHeadHash
         someHash -> return $ stringToHash someHash
     final <- (hoistEither relatives) >>= applyRelatives base
-    putStrLn' . show $ final
     right final
     where
         parentSyntax :: Char
@@ -322,12 +338,12 @@ refToHash unparsedRef = do
 
 -- | Returns whether the specified directory is part of a repository.
 isRepo :: FilePath -> IO Bool
-isRepo = Dir.doesDirectoryExist . (flip (</>) $ repositoryDataDir)
+isRepo = D.doesDirectoryExist . (flip (</>) $ repositoryDataDir)
 
 -- | Gets the ancestors of the current directory
 filesystemAncestors :: IO [FilePath]
 filesystemAncestors = do
-    currentDirectory <- decodeString <$> Dir.getCurrentDirectory
+    currentDirectory <- decodeString <$> D.getCurrentDirectory
     let ancestors = iterateMaybe getParent currentDirectory
     return . map encodeString . (:) currentDirectory $ ancestors
     where
@@ -350,14 +366,17 @@ commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
 diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
     headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
-    liftIO $ Dir.createDirectory headDir
+    liftIO $ D.createDirectory headDir
 
+    -- if no commits have been made; no point in filling the directory
+    -- since HEAD doesn't exist so it would result in an empty diff
+    -- anyway.
     whenM commitsHaveBeenMade $ do
         loadHeadHash >>= checkoutToDirectory headDir
 
     allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [repositoryDataDir]
 
-    liftIO $ Dir.removeDirectoryRecursive headDir
+    liftIO $ D.removeDirectoryRecursive headDir
 
     if isNothing maybeFilesToDiff
         then right allFilesDiff

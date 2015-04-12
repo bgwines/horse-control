@@ -5,3 +5,4 @@
 * be able to execute commands from any subdirectory of the root of the repository
 * dupes in staging area
 * input validation
+* diff stats

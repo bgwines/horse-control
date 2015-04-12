@@ -13,7 +13,7 @@ import Control.Monad.IO.Class (liftIO)
 -- qualified imports
 
 import qualified System.IO as IO
-import qualified System.Directory as Dir
+import qualified System.Directory as D
 
 import qualified Data.Hex as Hex
 import qualified Data.Default as Default
@@ -51,13 +51,13 @@ import qualified Horse.Commands.Porcelain as H
 runTest :: Assertion -> Assertion
 runTest t = do
     testDirectory <- getTestDirectory
-    Dir.createDirectory testDirectory
-    Dir.setCurrentDirectory testDirectory
+    D.createDirectory testDirectory
+    D.setCurrentDirectory testDirectory
 
     t
 
-    Dir.setCurrentDirectory ".."
-    Dir.removeDirectoryRecursive testDirectory
+    D.setCurrentDirectory ".."
+    D.removeDirectoryRecursive testDirectory
     where
         -- | Gives a name of a directory that is pretty much guaranteed to
         -- | exist, so it's free for creation.
@@ -239,7 +239,7 @@ testStatusCase5 = do
 testInit :: Assertion
 testInit = do
     H.init (Just Quiet)
-    rootDirectoryCreated <- Dir.doesDirectoryExist H.repositoryDataDir
+    rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
 -- | Verify that a command failed gracefully, as it should when run
@@ -272,15 +272,104 @@ testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 
 -- | Tests diffing. Assumes working `horse commit`
---testCheckout :: Assertion
---testCheckout = do 
-    --H.init (Just Quiet)
+testCheckout :: Assertion
+testCheckout = do 
+    H.init (Just Quiet)
 
-    --createFileWithContents "a" "a"
+    ----------------
 
-    --runEitherT $ H.stage addedFile
-    --return ()
-    -- TODO
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1
+    test2
+    test3
+    test2
+    test1
+    test3
+    test1
+
+    return ()
+    where   
+        first :: IO Hash
+        first
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . last)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+        
+        second :: IO Hash
+        second
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head . tail)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        third :: IO Hash
+        third
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        test1 :: Assertion
+        test1 = do
+            first >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Assertion
+        test2 = do
+            second >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Assertion
+        test3 = do
+            third >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        quietCheckout :: String -> IO ()
+        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -335,9 +424,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `status` (case 5)"
         (runTest testStatusCase5)
-    --, testCase
-    --    "Testing diffs being stored in commits"
-    --    (runTest testCheckout)
+    , testCase
+        "Testing diffs being stored in commits"
+        (runTest testCheckout)
     ]
 
 main :: IO ()

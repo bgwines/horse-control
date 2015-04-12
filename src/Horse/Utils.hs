@@ -88,6 +88,7 @@ iterateMaybe f curr = case f curr of
     Nothing -> []
     (Just next) -> (:) next $ iterateMaybe f next
 
+-- | monadic `when`
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM mCond action = mCond >>= (flip when $ action)
 

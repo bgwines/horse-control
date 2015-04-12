@@ -232,17 +232,7 @@ checkout ref maybeVerbosity = do
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
 
-    hash <- HIO.refToHash ref
-    soughtCommit <- HIO.loadCommit hash
-    ancestors <- HIO.loadHistory soughtCommit
-    let diffs :: [FD.Diff] = map diffWithPrimaryParent ancestors
-    mapM_ HIO.applyDiff (reverse diffs)
-
-    unless (verbosity == Quiet) $ do
-        putStrLn' $ "running command \"checkout\" with args "
-        liftIO . print $ ref
-        liftIO . print $ soughtCommit
-    -- TODO
+    HIO.refToHash ref >>= HIO.checkoutToDirectory "."
 
 -- | Shows the specified commit. With no arguments, assumes a single
 --   argument of HEAD.
@@ -269,14 +259,12 @@ log maybeRef maybeNumCommits maybeVerbosity = do
     if commitsHaveBeenMade
         then do
             headHash <- HIO.loadHeadHash
-
             let ref = maybe headHash stringToHash maybeRef
 
             commit <- HIO.loadCommit ref
-
             history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
 
             unless (verbosity == Quiet) $ do
-                (liftIO . print) $ message <$> history
+                liftIO . print $ hash <$> history
             right history
         else right []

@@ -4,7 +4,7 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE DisambiguateRecordFields #-}
 
--- | Data types used in horse-config implementation
+-- | Data types used by the implementation.
 module Horse.Types(
 -- * Records and their accessor functions
   UserInfo(..)
@@ -20,7 +20,7 @@ module Horse.Types(
 , Verbosity(..)
 
 -- * Aliases
-, Email
+, EmailAddress
 , Hash
 , Relative(..)
 , Date
@@ -56,11 +56,11 @@ instance Serialize FD.FileChange
 instance Serialize FD.Filediff
 instance Serialize FD.Diff
 
--- | Error type
+-- | Data type for any kind of error.
 type Error = String
 
--- | An e-mail.
-type Email = String
+-- | An e-mail address.
+type EmailAddress = String
 
 -- | The hash type used for hashing commits and diffs.
 type Hash = ByteString
@@ -74,7 +74,7 @@ instance Default Hash where
     def = empty
 
 -- `toGregorian . utctDay` on a date
--- | Date information to be stored in commits.
+-- | Date information: (year, month, day).
 type Date = (Integer, Int, Int)
 
 -- | A record representing information about the user.
@@ -85,7 +85,7 @@ data UserInfo = UserInfo {
 
 instance Serialize UserInfo
 
--- | A commit object.
+-- | A commit record.
 data Commit = Commit {
     author :: UserInfo,
     date :: Date,
@@ -97,14 +97,16 @@ data Commit = Commit {
 
 instance Serialize Commit
 
--- | Custom horse-control configuration, analogous to what's in ~/.gitconfig with Git.
+-- | User-specific configuration information, analogous to what's
+--   in ~/.gitconfig with Git.
 data Config = Config {
     userInfo :: UserInfo
 } deriving (Eq, Show, Generic)
 
 instance Serialize Config
 
--- | The staging area. Doesn't explicitly store the diffs; those are computed on the fly.
+-- | The staging area: files with changes to include in an upcoming
+--   commit.
 data StagingArea = StagingArea {
     adds :: [FilePath],
     mods :: [FilePath],
@@ -113,6 +115,7 @@ data StagingArea = StagingArea {
 
 instance Serialize StagingArea
 
+-- | Gets all files staged (be they added, modified, or deleted files).
 files :: StagingArea -> [FilePath]
 files (StagingArea adds mods dels) = adds ++ mods ++ dels
 
@@ -120,6 +123,9 @@ instance Default StagingArea where
     def :: StagingArea
     def = StagingArea { adds = def, mods = def, dels = def }
 
+-- | The current status of the repository; essentially, the difference
+--   between the current state of the filesystem, and the state it had
+--   in HEAD.
 data Status = Status {
     stagingArea :: StagingArea,
     unstagedFiles :: [FilePath]
@@ -129,5 +135,5 @@ instance Default Status where
     def :: Status
     def = Status def def
 
--- | Degree of printing to be executed by commands
+-- | Degree of printing / logging to be executed by exposed commands.
 data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show, Read)

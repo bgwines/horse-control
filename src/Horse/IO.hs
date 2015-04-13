@@ -1,7 +1,7 @@
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | Module for writing and reading from disk / the database
+-- | Helper module for writing and reading data from disk.
 module Horse.IO
 ( -- * staging area
   loadStagingArea
@@ -32,13 +32,13 @@ module Horse.IO
 , directories
 , databasePaths
 , serializationPathsAndInitialContents
-, commitsHaveBeenMade
 
--- * utility functions
+-- * filesystem utility functions
 , createFileWithContents
 , destructivelyCreateDirectory
 
 -- * assorted
+, commitsHaveBeenMade
 , checkoutToDirectory
 , loadHistory
 , loadParent
@@ -113,26 +113,27 @@ import Horse.Utils
     , (</>)
     , whenM )
 
--- | Writes a serializable object to a file
+-- | Writes a serializable object to a file.
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
 writeToFile filepath
     = ByteString.writeFile filepath
     . Serialize.encode
 
--- | Loads a serializable object from a file
+-- | Loads a serializable object from a file.
 loadFromFile :: (Serialize.Serialize a) => FilePath -> EitherT Error IO a
 loadFromFile filepath = EitherT $ Serialize.decode <$> ByteString.readFile filepath
 
 -- * staging area
 
--- | Loads the staging area from disk
+-- | Loads the staging area from disk.
 loadStagingArea :: EitherT Error IO StagingArea
 loadStagingArea = loadFromFile stagingAreaPath
 
--- | Writes the staging area to disk
+-- | Writes the staging area to disk.
 writeStagingArea :: StagingArea -> IO ()
 writeStagingArea = writeToFile stagingAreaPath
 
+-- | Gets all files that have modifications that are not staged.
 loadUnstagedFiles :: EitherT Error IO [FilePath]
 loadUnstagedFiles = do
     allFilesDiff <- diffWithHEAD Nothing
@@ -147,17 +148,21 @@ loadUnstagedFiles = do
 
 -- * HEAD
 
--- | Loads the object representing HEAD from disk
+-- | Loads hash of HEAD from disk. Returns a `Left` if no commits have
+--   been made.
 loadHeadHash :: EitherT Error IO Hash
 loadHeadHash = loadFromFile headHashPath
 
--- | Writes the object representing HEAD to disk
+-- | Writes HEAD's hash to disk.
 writeHeadHash :: Hash -> IO ()
 writeHeadHash = writeToFile headHashPath
 
 -- * commits
 
--- | Loads the commit with the given hash from the database
+-- | Attempts to load the commit with the given hash from the database.
+--   Returns a `Left` if the specified `Hash` doesn't reference a commit
+--   or if deserialization fails (which might happen if the database
+--   got corrupted).
 loadCommit :: Hash -> EitherT Error IO Commit
 loadCommit key = do
     maybeCommit <- liftIO $ do
@@ -171,20 +176,23 @@ loadCommit key = do
         loadErrorMessage :: String
         loadErrorMessage = "Could not fetch commit for key " ++ (show key)
 
--- | Writes the commit with the given hash to the database
-writeCommit :: Commit -> Hash -> IO ()
-writeCommit commit key = do
+-- | Writes the commit to the database, under the key of its hash.
+writeCommit :: Commit -> IO ()
+writeCommit commit = do
     db <- DB.open commitsPath Default.def
-    DB.put db Default.def key (Serialize.encode commit)
+    DB.put db Default.def (hash commit) (Serialize.encode commit)
     DBInternal.unsafeClose db
 
 -- * config
 
--- | Loads the object representing user-specified configuration from disk
+-- | Loads the object representing user-specified configuration from disk.
+--   Returns a `Left` if the specified `Hash` doesn't reference a commit
+--   or if deserialization fails (which might happen if the database
+--   got corrupted).
 loadConfig :: EitherT Error IO Config
 loadConfig = (liftIO getConfigPath) >>= loadFromFile
 
--- | Writes the object representing user-specified configuration to disk
+-- | Writes the object representing user-specified configuration to disk.
 writeConfig :: Config -> IO ()
 writeConfig config = do
     configPath <- getConfigPath
@@ -192,61 +200,65 @@ writeConfig config = do
 
 -- * paths
 
--- | The root path for all (horse-config)-stored data
+-- | The path (relative to root of repository) of the directory in which
+--   is stored data used by the implementation.
 repositoryDataDir :: FilePath
 repositoryDataDir = ".horse"
 
--- | The path to where the object representing HEAD is stored
+-- | The path to where HEAD's hash is stored (relative to root of
+--   repository).
 headHashPath :: FilePath
 headHashPath = repositoryDataDir </> "HEAD"
 
 -- | The path to where the object representing the staging area is stored
+--   (relative to root of repository).
 stagingAreaPath :: FilePath
 stagingAreaPath = repositoryDataDir </> "stagingArea"
 
--- | The path to where diffs are stored
+-- | The path to where diffs are stored (relative to root of repository).
 diffsPath :: FilePath
 diffsPath = repositoryDataDir </> "diffs"
 
--- | The path to where commits are stored
+-- | The path to where commits are stored (relative to root of
+--   repository).
 commitsPath :: FilePath
 commitsPath = repositoryDataDir </> "commits"
 
 -- | The path to where the object representing user-specified
--- | configuration information is stored. Returnvalue is wrapped in
--- | the `IO` monad because getting the user's home directory is
--- | a monadic operation.
+--   configuration information is stored. Returnvalue is wrapped in
+--   the `IO` monad because getting the user's home directory is
+--   a monadic operation.
 getConfigPath :: IO FilePath
 getConfigPath = (++) <$> D.getHomeDirectory <*> (return "/.horseconfig")
 
 -- * lists
 
--- | Paths to directories created by the implementation
+-- | Paths to directories created by the implementation.
 directories :: [FilePath]
 directories = [repositoryDataDir, diffsPath, commitsPath]
 
--- | Paths to databases used in the implementation
+-- | Paths to databases used in the implementation.
 databasePaths :: [FilePath]
 databasePaths = [diffsPath, commitsPath]
 
 -- | Paths to files used for storing objects, and the initial contents of
--- | those files upon initialization of an empty repository
+--   those files upon initialization of an empty repository.
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
     [ (headHashPath, Serialize.encode $ (Default.def :: Hash))
     , (stagingAreaPath, Serialize.encode $ (Default.def :: StagingArea)) ]
 
--- * utility functions
+-- * filesystem utility functions
 
--- | Creates a file on disk with the specified content
-createFileWithContents :: (FilePath, ByteString.ByteString) -> IO ()
-createFileWithContents (path, contents) = do
+-- | Creates a file on disk with the specified content.
+createFileWithContents :: FilePath -> ByteString.ByteString -> IO ()
+createFileWithContents path contents = do
     handle <- IO.openFile path IO.WriteMode
     ByteString.hPutStr handle contents
     IO.hClose handle
 
 -- | Creates a directory on disk at the specified destination, 
---   destroying one if it was already there
+--   destroying one if it was already there.
 destructivelyCreateDirectory :: FilePath -> IO ()
 destructivelyCreateDirectory dir = do
     dirAlreadyExists <- D.doesDirectoryExist dir
@@ -257,9 +269,15 @@ destructivelyCreateDirectory dir = do
 
 -- * assorted
 
--- | Checks out the specified hash to the specified directory. NOTE:
--- will entirely overwrite the contents of the specified directory;
--- be careful.
+-- | Identifies whether any commits have been made in the current
+--   repository.
+commitsHaveBeenMade :: EitherT Error IO Bool
+commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
+
+
+-- | Checks out the specified hash to the specified directory. *NOTE*:
+--   will entirely overwrite the contents of the specified directory;
+--   be careful.
 checkoutToDirectory :: FilePath -> Hash -> EitherT Error IO ()
 checkoutToDirectory dir hash = do
     liftIO clearDirectory
@@ -283,7 +301,7 @@ checkoutToDirectory dir hash = do
                 else D.removeDirectoryRecursive path
 
 -- | Loads the history from a given commit, all the way back
---   to the start. Returns in reverse order (latest commit at front)
+--   to the start. Returns in reverse order (latest commit at front).
 loadHistory :: Commit -> EitherT Error IO [Commit]
 loadHistory commit
     = liftIO
@@ -292,7 +310,7 @@ loadHistory commit
         (fmap eitherToMaybe . runEitherT . loadParent)
         commit
 
--- | Attempts to load the parent commit for a given commit
+-- | Attempts to load the parent commit for a given commit.
 loadParent :: Commit -> EitherT Error IO Commit
 loadParent commit =
     if isJust $ parentHash commit
@@ -307,7 +325,7 @@ loadParent commit =
 --   the hash is not a key in the database (no commits / diffs
 --   have been hashed with that key yet). Fails if the format
 --   is unexpected. Acceptable formats are listed in user-facing
---   documentation
+--   documentation.
 refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
     base <- case baseRef of
@@ -340,7 +358,7 @@ refToHash unparsedRef = do
 isRepo :: FilePath -> IO Bool
 isRepo = D.doesDirectoryExist . (flip (</>) $ repositoryDataDir)
 
--- | Gets the ancestors of the current directory
+-- | Gets the ancestors of the current directory.
 filesystemAncestors :: IO [FilePath]
 filesystemAncestors = do
     currentDirectory <- decodeString <$> D.getCurrentDirectory
@@ -355,14 +373,10 @@ isRepositoryOrAncestorIsRepo :: IO Bool
 isRepositoryOrAncestorIsRepo
     = filesystemAncestors >>= (fmap or . mapM isRepo)
 
--- | Identifies whether any commits have been made in the current repository
-commitsHaveBeenMade :: EitherT Error IO Bool
-commitsHaveBeenMade = ((/=) Default.def) <$> loadHeadHash
-
 -- * diffing
 
 -- | Pass in `Nothing` to diff all files; otherwise, pass in
--- the files to diff
+--   the files to diff.
 diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
     headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
@@ -402,10 +416,11 @@ diffWithHEAD maybeFilesToDiff = do
         formatChar ':' = '-'
         formatChar ch = ch
 
--- | Get a diff between the staging area and HEAD
+-- | Get a diff of the changes stored in the staging aread (that is,
+--   the changes to HEAD that will be committed).
 getStagedDiff :: StagingArea -> EitherT Error IO FD.Diff
 getStagedDiff = diffWithHEAD . Just . files
 
--- | True upon success, False upon failure
+-- | `True` upon success, `False` upon failure.
 applyDiff :: FD.Diff -> EitherT Error IO ()
 applyDiff = liftIO . (flip FD.applyToDirectory) "."

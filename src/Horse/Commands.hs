@@ -2,22 +2,23 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
--- | The standard commands accessible to users through the CLI
-module Horse.Commands.Porcelain
+-- | Commands exposed through the CLI
+module Horse.Commands
 ( -- * Basic commands
-  Horse.Commands.Porcelain.config
-, Horse.Commands.Porcelain.init
-, Horse.Commands.Porcelain.status
-, Horse.Commands.Porcelain.stage
-, Horse.Commands.Porcelain.checkout
-, Horse.Commands.Porcelain.commit
-, Horse.Commands.Porcelain.hshow
-, Horse.Commands.Porcelain.log
+  Horse.Commands.config
+, Horse.Commands.init
+, Horse.Commands.status
+, Horse.Commands.stage
+, Horse.Commands.commit
+, Horse.Commands.checkout
+, Horse.Commands.show
+, Horse.Commands.log
 ) where
 
 -- imports
 
-import Prelude hiding (init, log)
+import Prelude hiding (init, log, show)
+import qualified Prelude (show)
 
 import GHC.Generics
 
@@ -65,14 +66,15 @@ import Horse.Utils
 
 import qualified Horse.IO as HIO
 
--- | Sets user-specific configuration information.
-config :: Maybe String -> Maybe Email -> IO ()
+-- | Sets user-specific configuration information. The `Maybe String`
+--   refers to the user's name.
+config :: Maybe String -> Maybe EmailAddress -> IO ()
 config maybeName maybeEmail = do
     configPath <- HIO.getConfigPath
     configFileExistedBefore <- Dir.doesFileExist configPath
 
     unless configFileExistedBefore $ do
-        HIO.createFileWithContents (configPath, ByteString.empty) -- TODO
+        HIO.createFileWithContents configPath ByteString.empty
 
         let userInfo = UserInfo {
               name = fromMaybe Default.def maybeName
@@ -112,15 +114,15 @@ init maybeVerbosity = do
             ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
             HIO.databasePaths
 
-        sequence $ map HIO.createFileWithContents HIO.serializationPathsAndInitialContents
+        sequence $ map (uncurry HIO.createFileWithContents) HIO.serializationPathsAndInitialContents
 
         currDir <- Dir.getCurrentDirectory
         unless (verbosity == Quiet) $
             putStrLn $ "Initialized existing horse-control repository in"
                 ++ currDir ++ "/" ++ HIO.repositoryDataDir
 
--- | Prints the difference between the working directory and HEAD
--- TODO: check initialization has happened (all functions should do this)
+-- | Gets and prints the difference between the current state of the
+-- filesystem and the state of the filesystem at HEAD.
 status :: Maybe Verbosity -> EitherT Error IO Status
 status maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
@@ -143,8 +145,8 @@ status maybeVerbosity = do
 
     return currentStatus
 
--- | Adds the specified modification / addition / deletion of the
---   specified file to the staging area
+-- | Adds the whatever change was made (modification or addition or
+--   deletion) to the specified file to the staging area.
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
@@ -161,8 +163,8 @@ stage path = do
     liftIO $ HIO.writeStagingArea updatedStagingArea
     right updatedStagingArea
 
--- | Writes the staging area as a commit to disk. Currently takes a
---   single parameter of a message.
+-- | Writes the changes housed in the staging area as a commit to disk,
+--   then clears the staging area.
 commit :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
 commit maybeMessage maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
@@ -195,18 +197,18 @@ commit maybeMessage maybeVerbosity = do
     let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
-    liftIO $ HIO.writeCommit completeCommit commitHash
+    liftIO $ HIO.writeCommit completeCommit
 
-    liftIO . HIO.writeHeadHash $ commitHash
+    liftIO $ HIO.writeHeadHash commitHash
 
-    liftIO . HIO.writeStagingArea $ (Default.def :: StagingArea)
+    liftIO $ HIO.writeStagingArea (Default.def :: StagingArea)
 
     when (verbosity == Verbose) $ do
         print' completeCommit
 
     unless (verbosity == Quiet) $ do
         putStrLn' $ "[<branch> "
-            ++ (show . ByteString.take 8 $ commitHash)
+            ++ (Prelude.show . ByteString.take 8 $ commitHash)
             ++  "] " ++ message
         putStrLn' $ "0" ++ " files changed, "
             ++ "0" ++ " insertions(+), "
@@ -222,8 +224,8 @@ commit maybeMessage maybeVerbosity = do
             . SHA256.hash
             . Serialize.encode
 
--- | Sets all tracked files to their state in the specified commit
---   TODO: ref
+-- | Sets the contents of the filesystem to the state it had in the
+--   specified commit.
 checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
 checkout ref maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
@@ -234,10 +236,10 @@ checkout ref maybeVerbosity = do
 
     HIO.refToHash ref >>= HIO.checkoutToDirectory "."
 
--- | Shows the specified commit. With no arguments, assumes a single
---   argument of HEAD.
-hshow :: Maybe String -> EitherT Error IO ()
-hshow maybeRef = do
+-- | Prints information about the specified commit to the console. With
+--   a `Nothing` for its parameter, it assumes a single argument of HEAD.
+show :: Maybe String -> EitherT Error IO ()
+show maybeRef = do
     isRepository <- liftIO HIO.isRepositoryOrAncestorIsRepo
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
@@ -246,7 +248,10 @@ hshow maybeRef = do
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
     (HIO.loadCommit ref) >>= (liftIO . print)
 
--- | Prints the history from the current commit backwards
+-- | Prints the history from the current commit backwards. With
+--   a `Nothing` for its parameter, it assumes a single argument of HEAD.
+--   Pass in a `Just` `Int` to specify the number of commits back to go
+--   in the history.
 log :: Maybe String -> Maybe Int -> Maybe Verbosity -> EitherT Error IO [Commit]
 log maybeRef maybeNumCommits maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity

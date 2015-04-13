@@ -5,7 +5,7 @@ import System.Environment
 import System.Exit
 
 import qualified Horse.Types as Types
-import qualified Horse.Commands.Porcelain as Porcelain
+import qualified Horse.Commands as Commands
 
 import Control.Monad
 import Control.Monad.Trans.Either
@@ -21,7 +21,7 @@ import Data.Default as Default
 data Command
     = Init (Maybe Types.Verbosity)
     | Version
-    | Config (Maybe String) (Maybe Types.Email)
+    | Config (Maybe String) (Maybe Types.EmailAddress)
     | Status (Maybe Types.Verbosity)
     | Stage String
     | Commit (Maybe String) (Maybe Types.Verbosity)
@@ -135,14 +135,14 @@ run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- case cmd of
         Version            -> fmap Right $ putStrLn "0.1.0.2"
-        Init v             -> fmap Right $ Porcelain.init v
-        Config name email  -> fmap Right $ Porcelain.config name email
-        Checkout ref v     -> runEitherT $ Porcelain.checkout ref v
-        Show ref           -> runEitherT $ Porcelain.hshow ref
-        Stage path         -> runEitherT $ void $ Porcelain.stage path
-        Log ref n v        -> runEitherT $ void $ Porcelain.log ref n v
-        Status v           -> runEitherT $ void $ Porcelain.status v
-        Commit msg v       -> runEitherT $ void $ Porcelain.commit msg v
+        Init v             -> fmap Right $ Commands.init v
+        Config name email  -> fmap Right $ Commands.config name email
+        Checkout ref v     -> runEitherT $ Commands.checkout ref v
+        Show ref           -> runEitherT $ Commands.show ref
+        Stage path         -> runEitherT $ void $ Commands.stage path
+        Log ref n v        -> runEitherT $ void $ Commands.log ref n v
+        Status v           -> runEitherT $ void $ Commands.status v
+        Commit msg v       -> runEitherT $ void $ Commands.commit msg v
     if isLeft eitherSuccess
         then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()

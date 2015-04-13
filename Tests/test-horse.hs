@@ -44,7 +44,7 @@ import Horse.Types
 
 import qualified Horse.IO as H
 import qualified Horse.Utils as H
-import qualified Horse.Commands.Porcelain as H
+import qualified Horse.Commands as H
 
 -- | Runs a test in its own empty directory.
 -- | Effectively, it isolates it from all other tests.
@@ -265,7 +265,7 @@ testNoRepoCommit = testNoRepo $ quietCommit Default.def
 
 -- | Test the command `horse show` when run without a repository
 testNoRepoShow :: Assertion
-testNoRepoShow = testNoRepo $ H.hshow Default.def
+testNoRepoShow = testNoRepo $ H.show Default.def
 
 -- | Test the command `horse log` when run without a repository
 testNoRepoLog :: Assertion

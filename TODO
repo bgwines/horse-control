@@ -6,3 +6,4 @@
 * dupes in staging area
 * input validation
 * diff stats
+* stage, then mod without committing (remember to update docs for loadUnstagedFiles)

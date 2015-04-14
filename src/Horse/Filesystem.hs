@@ -1,4 +1,4 @@
--- | Helper module for writing and reading data from disk.
+-- | Helper module for manipulating the filesystem.
 module Horse.Filesystem
 ( createFileWithContents
 , destructivelyCreateDirectory

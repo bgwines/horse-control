@@ -64,6 +64,7 @@ import Horse.Utils
     , putStrLn'
     , fromEitherMaybeDefault )
 import qualified Horse.IO as HIO
+import qualified Horse.Filesystem as HF
 import qualified Horse.Constants as HC
 
 -- | Sets user-specific configuration information. The `Maybe String`
@@ -74,7 +75,7 @@ config maybeName maybeEmail = do
     configFileExistedBefore <- Dir.doesFileExist configPath
 
     unless configFileExistedBefore $ do
-        HIO.createFileWithContents configPath ByteString.empty
+        HF.createFileWithContents configPath ByteString.empty
 
         let userInfo = UserInfo {
               name = fromMaybe Default.def maybeName
@@ -107,14 +108,14 @@ init maybeVerbosity = do
         $ putStrLn $ "Error: repository already exists"
 
     unless repositoryAlreadyExists $ do
-        mapM_ HIO.destructivelyCreateDirectory HC.directories
+        mapM_ HF.destructivelyCreateDirectory HC.directories
 
         let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
         mapM_
             ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
             HC.databasePaths
 
-        sequence $ map (uncurry HIO.createFileWithContents) HC.serializationPathsAndInitialContents
+        sequence $ map (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
         currDir <- Dir.getCurrentDirectory
         unless (verbosity == Quiet) $

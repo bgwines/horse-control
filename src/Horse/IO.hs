@@ -20,10 +20,6 @@ module Horse.IO
 , loadConfig
 , writeConfig
 
--- * filesystem utility functions
-, createFileWithContents
-, destructivelyCreateDirectory
-
 -- * assorted
 , commitsHaveBeenMade
 , checkoutToDirectory
@@ -99,7 +95,7 @@ import Horse.Utils
     , toMaybe
     , (</>)
     , whenM )
-import Horse.Constants as HC
+import qualified Horse.Constants as HC
 
 -- | Writes a serializable object to a file.
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -139,11 +135,11 @@ loadUnstagedFiles = do
 -- | Loads hash of HEAD from disk. Returns a `Left` if no commits have
 --   been made.
 loadHeadHash :: EitherT Error IO Hash
-loadHeadHash = loadFromFile headHashPath
+loadHeadHash = loadFromFile HC.headHashPath
 
 -- | Writes HEAD's hash to disk.
 writeHeadHash :: Hash -> IO ()
-writeHeadHash = writeToFile headHashPath
+writeHeadHash = writeToFile HC.headHashPath
 
 -- * commits
 
@@ -154,7 +150,7 @@ writeHeadHash = writeToFile headHashPath
 loadCommit :: Hash -> EitherT Error IO Commit
 loadCommit key = do
     maybeCommit <- liftIO $ do
-        db <- DB.open commitsPath Default.def
+        db <- DB.open HC.commitsPath Default.def
         maybeCommit <- DB.get db Default.def key
         DBInternal.unsafeClose db
         return maybeCommit
@@ -167,7 +163,7 @@ loadCommit key = do
 -- | Writes the commit to the database, under the key of its hash.
 writeCommit :: Commit -> IO ()
 writeCommit commit = do
-    db <- DB.open commitsPath Default.def
+    db <- DB.open HC.commitsPath Default.def
     DB.put db Default.def (hash commit) (Serialize.encode commit)
     DBInternal.unsafeClose db
 
@@ -185,25 +181,6 @@ writeConfig :: Config -> IO ()
 writeConfig config = do
     configPath <- HC.configPath
     ByteString.writeFile configPath (Serialize.encode config)
-
--- * filesystem utility functions
-
--- | Creates a file on disk with the specified content.
-createFileWithContents :: FilePath -> ByteString.ByteString -> IO ()
-createFileWithContents path contents = do
-    handle <- IO.openFile path IO.WriteMode
-    ByteString.hPutStr handle contents
-    IO.hClose handle
-
--- | Creates a directory on disk at the specified destination, 
---   destroying one if it was already there.
-destructivelyCreateDirectory :: FilePath -> IO ()
-destructivelyCreateDirectory dir = do
-    dirAlreadyExists <- D.doesDirectoryExist dir
-    if dirAlreadyExists
-        then D.removeDirectoryRecursive dir
-        else return ()
-    D.createDirectory dir
 
 -- * assorted
 
@@ -228,7 +205,7 @@ checkoutToDirectory dir hash = do
         clearDirectory :: IO ()
         clearDirectory = do
             allContents <- liftIO $ D.getDirectoryContents dir
-            let toDelete = allContents \\ [repositoryDataDir, "..", "."]
+            let toDelete = allContents \\ [HC.repositoryDataDir, "..", "."]
             mapM_ rm toDelete
 
         rm :: FilePath -> IO ()
@@ -294,7 +271,7 @@ refToHash unparsedRef = do
 
 -- | Returns whether the specified directory is part of a repository.
 isRepo :: FilePath -> IO Bool
-isRepo = D.doesDirectoryExist . (flip (</>) $ repositoryDataDir)
+isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
 
 -- | Gets the ancestors of the current directory.
 filesystemAncestors :: IO [FilePath]
@@ -317,7 +294,7 @@ isRepositoryOrAncestorIsRepo
 --   the files to diff.
 diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
-    headDir <- liftIO $ ((</>) repositoryDataDir) <$> getTempDirectory
+    headDir <- liftIO $ ((</>) HC.repositoryDataDir) <$> getTempDirectory
     liftIO $ D.createDirectory headDir
 
     -- if no commits have been made; no point in filling the directory
@@ -326,7 +303,7 @@ diffWithHEAD maybeFilesToDiff = do
     whenM commitsHaveBeenMade $ do
         loadHeadHash >>= checkoutToDirectory headDir
 
-    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [repositoryDataDir]
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [HC.repositoryDataDir]
 
     liftIO $ D.removeDirectoryRecursive headDir
 

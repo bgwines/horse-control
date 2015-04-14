@@ -45,6 +45,7 @@ import Horse.Types
 import qualified Horse.IO as H
 import qualified Horse.Utils as H
 import qualified Horse.Commands as H
+import qualified Horse.Constants as H
 
 -- | Runs a test in its own empty directory.
 -- | Effectively, it isolates it from all other tests.

@@ -63,14 +63,14 @@ import Horse.Utils
     , print'
     , putStrLn'
     , fromEitherMaybeDefault )
-
 import qualified Horse.IO as HIO
+import qualified Horse.Constants as HC
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
 config :: Maybe String -> Maybe EmailAddress -> IO ()
 config maybeName maybeEmail = do
-    configPath <- HIO.getConfigPath
+    configPath <- HC.configPath
     configFileExistedBefore <- Dir.doesFileExist configPath
 
     unless configFileExistedBefore $ do
@@ -97,7 +97,7 @@ config maybeName maybeEmail = do
 init :: Maybe Verbosity -> IO ()
 init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
-    repositoryAlreadyExists <- Dir.doesDirectoryExist HIO.repositoryDataDir
+    repositoryAlreadyExists <- Dir.doesDirectoryExist HC.repositoryDataDir
 
     -- initialize config file; it's read from
     -- in this function and hence needs to exist
@@ -107,19 +107,19 @@ init maybeVerbosity = do
         $ putStrLn $ "Error: repository already exists"
 
     unless repositoryAlreadyExists $ do
-        mapM_ HIO.destructivelyCreateDirectory HIO.directories
+        mapM_ HIO.destructivelyCreateDirectory HC.directories
 
         let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
         mapM_
             ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
-            HIO.databasePaths
+            HC.databasePaths
 
-        sequence $ map (uncurry HIO.createFileWithContents) HIO.serializationPathsAndInitialContents
+        sequence $ map (uncurry HIO.createFileWithContents) HC.serializationPathsAndInitialContents
 
         currDir <- Dir.getCurrentDirectory
         unless (verbosity == Quiet) $
             putStrLn $ "Initialized existing horse-control repository in"
-                ++ currDir ++ "/" ++ HIO.repositoryDataDir
+                ++ currDir ++ "/" ++ HC.repositoryDataDir
 
 -- | Gets and prints the difference between the current state of the
 -- filesystem and the state of the filesystem at HEAD.

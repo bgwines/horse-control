@@ -20,19 +20,6 @@ module Horse.IO
 , loadConfig
 , writeConfig
 
--- * paths
-, repositoryDataDir
-, headHashPath
-, stagingAreaPath
-, diffsPath
-, commitsPath
-, getConfigPath
-
--- * lists
-, directories
-, databasePaths
-, serializationPathsAndInitialContents
-
 -- * filesystem utility functions
 , createFileWithContents
 , destructivelyCreateDirectory
@@ -112,6 +99,7 @@ import Horse.Utils
     , toMaybe
     , (</>)
     , whenM )
+import Horse.Constants as HC
 
 -- | Writes a serializable object to a file.
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -127,11 +115,11 @@ loadFromFile filepath = EitherT $ Serialize.decode <$> ByteString.readFile filep
 
 -- | Loads the staging area from disk.
 loadStagingArea :: EitherT Error IO StagingArea
-loadStagingArea = loadFromFile stagingAreaPath
+loadStagingArea = loadFromFile HC.stagingAreaPath
 
 -- | Writes the staging area to disk.
 writeStagingArea :: StagingArea -> IO ()
-writeStagingArea = writeToFile stagingAreaPath
+writeStagingArea = writeToFile HC.stagingAreaPath
 
 -- | Gets all files that have modifications that are not staged.
 loadUnstagedFiles :: EitherT Error IO [FilePath]
@@ -190,63 +178,13 @@ writeCommit commit = do
 --   or if deserialization fails (which might happen if the database
 --   got corrupted).
 loadConfig :: EitherT Error IO Config
-loadConfig = (liftIO getConfigPath) >>= loadFromFile
+loadConfig = (liftIO HC.configPath) >>= loadFromFile
 
 -- | Writes the object representing user-specified configuration to disk.
 writeConfig :: Config -> IO ()
 writeConfig config = do
-    configPath <- getConfigPath
+    configPath <- HC.configPath
     ByteString.writeFile configPath (Serialize.encode config)
-
--- * paths
-
--- | The path (relative to root of repository) of the directory in which
---   is stored data used by the implementation.
-repositoryDataDir :: FilePath
-repositoryDataDir = ".horse"
-
--- | The path to where HEAD's hash is stored (relative to root of
---   repository).
-headHashPath :: FilePath
-headHashPath = repositoryDataDir </> "HEAD"
-
--- | The path to where the object representing the staging area is stored
---   (relative to root of repository).
-stagingAreaPath :: FilePath
-stagingAreaPath = repositoryDataDir </> "stagingArea"
-
--- | The path to where diffs are stored (relative to root of repository).
-diffsPath :: FilePath
-diffsPath = repositoryDataDir </> "diffs"
-
--- | The path to where commits are stored (relative to root of
---   repository).
-commitsPath :: FilePath
-commitsPath = repositoryDataDir </> "commits"
-
--- | The path to where the object representing user-specified
---   configuration information is stored. Returnvalue is wrapped in
---   the `IO` monad because getting the user's home directory is
---   a monadic operation.
-getConfigPath :: IO FilePath
-getConfigPath = (++) <$> D.getHomeDirectory <*> (return "/.horseconfig")
-
--- * lists
-
--- | Paths to directories created by the implementation.
-directories :: [FilePath]
-directories = [repositoryDataDir, diffsPath, commitsPath]
-
--- | Paths to databases used in the implementation.
-databasePaths :: [FilePath]
-databasePaths = [diffsPath, commitsPath]
-
--- | Paths to files used for storing objects, and the initial contents of
---   those files upon initialization of an empty repository.
-serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
-serializationPathsAndInitialContents =
-    [ (headHashPath, Serialize.encode $ (Default.def :: Hash))
-    , (stagingAreaPath, Serialize.encode $ (Default.def :: StagingArea)) ]
 
 -- * filesystem utility functions
 

@@ -7,3 +7,4 @@
 * input validation
 * diff stats
 * stage, then mod without committing (remember to update docs for loadUnstagedFiles)
+* _____split up `Horse.IO`?_____

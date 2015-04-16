@@ -27,6 +27,8 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
+import Data.List (sort)
+
 import System.Exit (exitSuccess)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -92,7 +94,7 @@ testLog = do
         history <- reverse <$> H.log Nothing Nothing (Just Quiet)
         liftIO $ commits @?= history
     when (isLeft eitherSuccess) $ do
-        assertFailure (fromLeft "" eitherSuccess)
+        assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
 -- | Test the `horse log` command
@@ -105,7 +107,7 @@ testLogEdgeCase1 = do
         liftIO $ [] @?= history
 
     when (isLeft eitherSuccess) $ do
-        assertFailure (fromLeft "" eitherSuccess)
+        assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
 -- | Test the `horse log` command
@@ -120,7 +122,7 @@ testLogEdgeCase2 = do
         history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
         liftIO $ (take (2+1) commits) @?= history
     when (isLeft eitherSuccess) $ do
-        assertFailure (fromLeft "" eitherSuccess)
+        assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
 -- | Test the `horse log` command
@@ -135,7 +137,7 @@ testLogEdgeCase3 = do
         history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
         liftIO $ ([head commits]) @?= history
     when (isLeft eitherSuccess) $ do
-        assertFailure (fromLeft "" eitherSuccess)
+        assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
 -- | Test the `horse stage` command
@@ -150,10 +152,29 @@ testStage = do
     eitherStagingArea <- runEitherT H.loadStagingArea
 
     (Right ["a"]) @?= (adds <$> eitherStagingArea)
-
     (Right [])    @?= (mods <$> eitherStagingArea)
-
     (Right [])    @?= (dels <$> eitherStagingArea)
+
+-- | Test the `horse stage` command when given a directory
+testStageDirectory :: Assertion
+testStageDirectory = do
+    H.init (Just Quiet)
+
+    D.createDirectory "dir"
+    createFileWithContents "dir/a" "a"
+
+    runEitherT $ H.stage "dir/a"
+    runEitherT $ quietCommit Nothing
+
+    createFileWithContents "dir/b" "b"
+
+    runEitherT $ H.stage "dir"
+
+    --eitherStagingArea <- runEitherT H.loadStagingArea
+    return ()
+    --(Right ["dir/b"]) @?= (adds <$> eitherStagingArea)
+    --(Right ["dir/a"]) @?= (mods <$> eitherStagingArea)
+    --(Right [])        @?= (dels <$> eitherStagingArea)
 
 -- | No files should result in an empty staging area
 testStatusCase1 :: Assertion
@@ -266,7 +287,7 @@ testNoRepoCommit = testNoRepo $ quietCommit Default.def
 
 -- | Test the command `horse show` when run without a repository
 testNoRepoShow :: Assertion
-testNoRepoShow = testNoRepo $ H.show Default.def
+testNoRepoShow = testNoRepo $ H.show Default.def (Just Quiet)
 
 -- | Test the command `horse log` when run without a repository
 testNoRepoLog :: Assertion
@@ -372,6 +393,295 @@ testCheckout = do
         quietCheckout :: String -> IO ()
         quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
 
+-- unstaged files
+testStatusFromSubdir :: Assertion
+testStatusFromSubdir = do
+    H.init (Just Quiet)
+
+    D.createDirectory "a"
+    D.createDirectory "a/b"
+    D.createDirectory "a/b/c"
+    createFileWithContents "a/b/file" "x"
+    D.setCurrentDirectory "a/b/c"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` command should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    status @?= Status (StagingArea [] [] []) ["a/b/file"]
+
+    D.setCurrentDirectory "../../.."
+
+testStageFromSubdir :: Assertion
+testStageFromSubdir = do
+    H.init (Just Quiet)
+
+    D.createDirectory "a"
+    createFileWithContents "a/x" "x"
+    D.setCurrentDirectory "a"
+
+    runEitherT $ H.stage "x"
+
+    -- test that current directory did not change
+    currDirContents <- D.getDirectoryContents "."
+    (sort currDirContents) @?= (sort [".", "..", "x"])
+    D.setCurrentDirectory ".."
+
+    eitherStagingArea <- runEitherT H.loadStagingArea
+    eitherStagingArea @?= Right (StagingArea ["a/x"] [] [])
+
+testCheckoutFromSubdir :: Assertion
+testCheckoutFromSubdir = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    D.createDirectory "dir"
+    createFileWithContents "dir/a" "1"
+
+    runEitherT $ H.stage "dir/a"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    D.removeFile "dir/a" >> createFileWithContents "dir/a" "2"
+    createFileWithContents "dir/b" "2"
+
+    runEitherT $ H.stage "dir/a"
+    runEitherT $ H.stage "dir/b"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    D.removeFile "dir/a" >> createFileWithContents "dir/a" "3"
+    D.removeFile "dir/b"
+
+    runEitherT $ H.stage "dir/a"
+    runEitherT $ H.stage "dir/b"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1
+    test2
+    test3
+    test2
+    test1
+    test3
+    test1
+
+    return ()
+    where   
+        first :: IO Hash
+        first
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . last)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+        
+        second :: IO Hash
+        second
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head . tail)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        third :: IO Hash
+        third
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        test1 :: Assertion
+        test1 = do
+            D.setCurrentDirectory "dir"
+            first >>= (quietCheckout) . H.hashToString
+
+            c <- D.getDirectoryContents "."
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+
+            D.setCurrentDirectory ".."
+
+        test2 :: Assertion
+        test2 = do
+            D.setCurrentDirectory "dir"
+            second >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+
+            D.setCurrentDirectory ".."
+
+        test3 :: Assertion
+        test3 = do
+            D.setCurrentDirectory "dir"
+            third >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+
+            D.setCurrentDirectory ".."
+
+        quietCheckout :: String -> IO ()
+        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+
+testCommitFromSubdir :: Assertion
+testCommitFromSubdir = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    D.createDirectory "dir"
+    D.setCurrentDirectory "dir"
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ quietCommit Nothing
+    --cd <- D.getCurrentDirectory
+    --putStrLn $ "CDURRR: " ++ cd
+    --c <- D.getDirectoryContents "."
+    --putStrLn $ "CNT:" ++ (show c)
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ quietCommit Nothing
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ quietCommit Nothing
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1
+    test2
+    test3
+    test2
+    test1
+    test3
+    test1
+
+    D.setCurrentDirectory ".."
+
+    return ()
+    where   
+        first :: IO Hash
+        first
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . last)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+        
+        second :: IO Hash
+        second
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head . tail)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        third :: IO Hash
+        third
+            = fromRight undefined
+            <$> (runEitherT
+                        $ (hash . head)
+                            <$> (H.log Nothing Nothing (Just Quiet)))
+
+        test1 :: Assertion
+        test1 = do
+            first >>= (quietCheckout) . H.hashToString
+
+            c <- D.getDirectoryContents "."
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+
+        test2 :: Assertion
+        test2 = do
+            second >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+
+        test3 :: Assertion
+        test3 = do
+            third >>= (quietCheckout) . H.hashToString
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+
+        quietCheckout :: String -> IO ()
+        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+
+testShowFromSubdir :: Assertion
+testShowFromSubdir = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    D.createDirectory "dir"
+    D.setCurrentDirectory "dir"
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit <- runEitherT $ quietCommit Nothing
+
+    assertBool "`commit` should not fail." $ isRight eitherCommit
+    let commit = fromRight undefined eitherCommit
+
+    eitherShownCommit <- runEitherT $ H.show (Just $ H.hashToString $ hash commit) (Just Quiet)
+    assertBool "`commit` should not fail." $ isRight eitherShownCommit
+    let shownCommit = fromRight undefined eitherShownCommit
+
+    shownCommit @?= commit
+
+    D.setCurrentDirectory ".."
+
+testLogFromSubdir :: Assertion
+testLogFromSubdir = do
+    H.init (Just Quiet)
+    eitherSuccess <- runEitherT $ do
+        liftIO $ D.createDirectory "dir"
+        liftIO $ D.setCurrentDirectory "dir"
+
+        let messages = map Just ["A", "B", "C", "D"]
+        commits <- mapM quietCommit messages
+
+        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
+        liftIO $ commits @?= history
+    D.setCurrentDirectory ".."
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft undefined eitherSuccess)
+    return ()
+
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -411,6 +721,9 @@ tests = testGroup "unit tests"
         "Testing command `stage`"
         (runTest testStage)
     , testCase
+        "Testing command `stage` when given a directory"
+        (runTest testStageDirectory)
+    , testCase
         "Testing command `status` (case 1)"
         (runTest testStatusCase1)
     , testCase
@@ -428,6 +741,24 @@ tests = testGroup "unit tests"
     , testCase
         "Testing diffs being stored in commits"
         (runTest testCheckout)
+    , testCase
+        "Testing executing command `status` from subdirectory"
+        (runTest testStatusFromSubdir)
+    , testCase
+        "Testing executing command `stage` from subdirectory"
+        (runTest testStageFromSubdir)
+    , testCase
+        "Testing executing command `checkout` from subdirectory"
+        (runTest testCheckoutFromSubdir)
+    , testCase
+        "Testing executing command `commit` from subdirectory"
+        (runTest testCommitFromSubdir)
+    , testCase
+        "Testing executing command `show` from subdirectory"
+        (runTest testShowFromSubdir)
+    , testCase
+        "Testing executing command `log` from subdirectory"
+        (runTest testLogFromSubdir)
     ]
 
 main :: IO ()

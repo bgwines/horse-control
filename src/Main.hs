@@ -138,7 +138,7 @@ run cmd = do
         Init v             -> fmap Right $ Commands.init v
         Config name email  -> fmap Right $ Commands.config name email
         Checkout ref v     -> runEitherT $ Commands.checkout ref v
-        Show ref           -> runEitherT $ Commands.show ref
+        Show ref           -> runEitherT $ void $ Commands.show ref Nothing
         Stage path         -> runEitherT $ void $ Commands.stage path
         Log ref n v        -> runEitherT $ void $ Commands.log ref n v
         Status v           -> runEitherT $ void $ Commands.status v

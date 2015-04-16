@@ -113,29 +113,31 @@ config maybeName maybeEmail = do
 init :: Maybe Verbosity -> IO ()
 init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
+
     repositoryAlreadyExists <- D.doesDirectoryExist HC.repositoryDataDir
+    when repositoryAlreadyExists $
+        fail "Error: repository already exists"
+    isSubdirOfRepo <- isRepositoryOrAncestorIsRepo "."
+    when isSubdirOfRepo $
+        fail "Error: directory is subdirectory of another horse-control repo"
 
     -- initialize config file; it's read from
     -- in this function and hence needs to exist
     config Nothing Nothing 
 
-    when repositoryAlreadyExists
-        $ putStrLn $ "Error: repository already exists"
+    mapM_ HF.destructivelyCreateDirectory HC.directories
 
-    unless repositoryAlreadyExists $ do
-        mapM_ HF.destructivelyCreateDirectory HC.directories
+    let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
+    mapM_
+        ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
+        HC.databasePaths
 
-        let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
-        mapM_
-            ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
-            HC.databasePaths
+    sequence $ map (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
-        sequence $ map (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
-
-        currDir <- D.getCurrentDirectory
-        unless (verbosity == Quiet) $
-            putStrLn $ "Initialized existing horse-control repository in"
-                ++ currDir ++ "/" ++ HC.repositoryDataDir
+    currDir <- D.getCurrentDirectory
+    unless (verbosity == Quiet) $
+        putStrLn $ "Initialized existing horse-control repository in"
+            ++ currDir ++ "/" ++ HC.repositoryDataDir
 
 -- | Gets and prints the difference between the current state of the
 -- filesystem and the state of the filesystem at HEAD.
@@ -143,9 +145,8 @@ status :: Maybe Verbosity -> EitherT Error IO Status
 status maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
     stagingArea <- HIO.loadStagingArea
     unstagedFiles <- loadUnstagedFiles
@@ -159,25 +160,50 @@ status maybeVerbosity = do
         putStrLn' "Unstaged changes:"
         liftIO . print $ unstagedFiles
 
-    return currentStatus
+    liftIO $ D.setCurrentDirectory userDirectory
+    right currentStatus
 
 -- | Adds the whatever change was made (modification or addition or
---   deletion) to the specified file to the staging area.
+--   deletion) to the specified file or directory to the staging area.
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
-    change <- (FD.change . head . FD.filediffs) <$> (diffWithHEAD (Just [path]))
+    root <- liftIO repoRoot
+    -- tail for prefixing '/' coming from `dropPrefix`
+    -- relative to root of repo
+    let relativePath = tail $ (dropPrefix root userDirectory) </> path
+    isDir <- liftIO $ D.doesDirectoryExist relativePath
+    relativePaths <- if isDir
+        then liftIO $ (map $ (</>) relativePath) <$> HF.getDirectoryContentsRecursiveSafe relativePath
+        else return [relativePath]
+
+    diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
 
     stagingArea <- HIO.loadStagingArea
-    let updatedStagingArea = case change of FD.Add _ -> stagingArea { adds = path : (adds stagingArea) }
-                                            FD.Mod _ -> stagingArea { mods = path : (mods stagingArea) }
-                                            FD.Del _ -> stagingArea { dels = path : (dels stagingArea) }
+
+    let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
+    let updatedStagingArea = foldl (flip ($)) stagingArea updateFunctions
 
     liftIO $ HIO.writeStagingArea updatedStagingArea
+
+    liftIO $ D.setCurrentDirectory userDirectory
     right updatedStagingArea
+    where
+        updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
+        updateStagingArea
+            (FD.Filediff base _ change) stagingArea = case change of {
+            FD.Add _ -> stagingArea { adds = base : (adds stagingArea) };
+            FD.Mod _ -> stagingArea { mods = base : (mods stagingArea) };
+            FD.Del _ -> stagingArea { dels = base : (dels stagingArea) };
+            }
+-- | assumes `a` is a prefix of `b`; errors if false
+dropPrefix :: (Eq a) => [a] -> [a] -> [a]
+dropPrefix [] bs = bs
+dropPrefix (a:as) (b:bs)
+    | a /= b = error "not a prefix"
+    | otherwise = dropPrefix as bs
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
@@ -186,9 +212,8 @@ commit maybeMessage maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
     let message = fromMaybe "default message" maybeMessage
 
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
 
@@ -230,6 +255,8 @@ commit maybeMessage maybeVerbosity = do
             ++ "0" ++ " insertions(+), "
             ++ "0" ++ " deletions(-)"
 
+    liftIO $ D.setCurrentDirectory userDirectory
+
     right completeCommit
     where
         -- TODO: where does this go?
@@ -246,23 +273,31 @@ checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
 checkout ref maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
     refToHash ref >>= checkoutToDirectory "."
 
+    liftIO $ D.setCurrentDirectory userDirectory
+
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
-show :: Maybe String -> EitherT Error IO ()
-show maybeRef = do
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+show :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
+show maybeRef maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
     headHash <- HIO.loadHeadHash
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
-    (HIO.loadCommit ref) >>= (liftIO . print)
+    commit <- HIO.loadCommit ref
+
+    liftIO $ when (verbosity /= Quiet) (print commit)
+
+    liftIO $ D.setCurrentDirectory userDirectory
+    right commit
+
 
 -- | Prints the history from the current commit backwards. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
@@ -272,12 +307,11 @@ log :: Maybe String -> Maybe Int -> Maybe Verbosity -> EitherT Error IO [Commit]
 log maybeRef maybeNumCommits maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
-    isRepository <- liftIO isRepositoryOrAncestorIsRepo
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
 
     haveCommitsBeenMade <- commitsHaveBeenMade
-    if haveCommitsBeenMade
+    history <- if haveCommitsBeenMade
         then do
             headHash <- HIO.loadHeadHash
             let ref = maybe headHash stringToHash maybeRef
@@ -289,11 +323,20 @@ log maybeRef maybeNumCommits maybeVerbosity = do
                 liftIO . print $ hash <$> history
             right history
         else right []
+    liftIO $ D.setCurrentDirectory userDirectory
+    right history
 
 -- * helper functions (not exposed)
 
 -- * assorted
 
+assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
+assertIsRepositoryAndCdToRoot = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    isRepository <- liftIO $ isRepositoryOrAncestorIsRepo userDirectory
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    liftIO $ repoRoot >>= D.setCurrentDirectory
 
 -- | Gets all files that have modifications that are not staged.
 loadUnstagedFiles :: EitherT Error IO [FilePath]
@@ -398,19 +441,32 @@ isRepo :: FilePath -> IO Bool
 isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
 
 -- | Gets the ancestors of the current directory.
-filesystemAncestors :: IO [FilePath]
-filesystemAncestors = do
-    currentDirectory <- decodeString <$> D.getCurrentDirectory
-    let ancestors = iterateMaybe getParent currentDirectory
-    return . map encodeString . (:) currentDirectory $ ancestors
+filesystemAncestors :: FilePath -> IO [FilePath]
+filesystemAncestors directory = do
+    let ancestors = iterateMaybe getParent (decodeString directory)
+    return . (:) directory . map encodeString $ ancestors
     where
         getParent :: Filesystem.Path.FilePath -> Maybe Filesystem.Path.FilePath
         getParent curr = toMaybe (parent curr) ((/=) curr)
 
 -- | Returns whether the current directory is part of a repository.
-isRepositoryOrAncestorIsRepo :: IO Bool
-isRepositoryOrAncestorIsRepo
-    = filesystemAncestors >>= (fmap or . mapM isRepo)
+isRepositoryOrAncestorIsRepo :: FilePath -> IO Bool
+isRepositoryOrAncestorIsRepo filepath
+    = (filesystemAncestors filepath) >>= (fmap or . mapM isRepo)
+
+repoRoot :: IO FilePath
+repoRoot = do
+    ancestors <- D.getCurrentDirectory >>= filesystemAncestors
+    last <$> takeWhileM isRepositoryOrAncestorIsRepo ancestors
+    where
+        -- | Monadic 'takeWhile'.
+        takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]
+        takeWhileM _ []     = return []
+        takeWhileM p (x:xs) = do
+            q <- p x
+            if q
+                then (takeWhileM p xs) >>= (return . (:) x)
+                else return []
 
 -- * diffing
 

@@ -50,7 +50,7 @@ import qualified Database.LevelDB.Internal as DBI
 
 -- imported functions
 
-import qualified Filesystem.Path (FilePath)
+import qualified Filesystem.Path (FilePath, collapse)
 
 import Data.List (foldl', (\\))
 
@@ -167,16 +167,26 @@ status maybeVerbosity = do
 --   deletion) to the specified file or directory to the staging area.
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
+    -- can't yet tell which files were ever committed, so we can't
+    -- distinguish between a deleted file and a nonexistent one.
+    --pathExistsIsFile <- liftIO $ D.doesFileExist path
+    --pathExistsIsDir <- liftIO $ D.doesDirectoryExist path
+    --unless (pathExistsIsFile || pathExistsIsDir) $ do
+    --    left $ "Can't stage file or directory at path \"" ++ path ++ "\"; no file or directory exists at that path."
+
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
     root <- liftIO repoRoot
     -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
-    let relativePath = tail $ (dropPrefix root userDirectory) </> path
+    let relativePath = HF.relativizePath path root userDirectory
+    when (HF.isPrefix ".." relativePath) $ do
+        left $ "Can't stage file or directory outside of the repository: " ++ path
+
     isDir <- liftIO $ D.doesDirectoryExist relativePath
     relativePaths <- if isDir
-        then liftIO $ (map $ (</>) relativePath) <$> HF.getDirectoryContentsRecursiveSafe relativePath
+        then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
         else return [relativePath]
 
     diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
@@ -198,12 +208,6 @@ stage path = do
             FD.Mod _ -> stagingArea { mods = base : (mods stagingArea) };
             FD.Del _ -> stagingArea { dels = base : (dels stagingArea) };
             }
--- | assumes `a` is a prefix of `b`; errors if false
-dropPrefix :: (Eq a) => [a] -> [a] -> [a]
-dropPrefix [] bs = bs
-dropPrefix (a:as) (b:bs)
-    | a /= b = error "not a prefix"
-    | otherwise = dropPrefix as bs
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.

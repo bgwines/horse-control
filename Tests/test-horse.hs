@@ -83,7 +83,6 @@ createFileWithContents filepath contents = do
 quietCommit :: Maybe String -> EitherT Error IO Commit
 quietCommit = (flip H.commit $ Just Quiet)
 
--- | Test the `horse log` command
 testLog :: Assertion
 testLog = do
     H.init (Just Quiet)
@@ -97,7 +96,6 @@ testLog = do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
--- | Test the `horse log` command
 testLogEdgeCase1 :: Assertion
 testLogEdgeCase1 = do
     H.init (Just Quiet)
@@ -110,7 +108,6 @@ testLogEdgeCase1 = do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
--- | Test the `horse log` command
 testLogEdgeCase2 :: Assertion
 testLogEdgeCase2 = do
     H.init (Just Quiet)
@@ -125,7 +122,6 @@ testLogEdgeCase2 = do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
--- | Test the `horse log` command
 testLogEdgeCase3 :: Assertion
 testLogEdgeCase3 = do
     H.init (Just Quiet)
@@ -140,7 +136,6 @@ testLogEdgeCase3 = do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
 
--- | Test the `horse stage` command
 testStage :: Assertion
 testStage = do
     H.init (Just Quiet)
@@ -155,28 +150,138 @@ testStage = do
     (Right [])    @?= (mods <$> eitherStagingArea)
     (Right [])    @?= (dels <$> eitherStagingArea)
 
--- | Test the `horse stage` command when given a directory
 testStageDirectory :: Assertion
 testStageDirectory = do
     H.init (Just Quiet)
 
     D.createDirectory "dir"
-    createFileWithContents "dir/a" "a"
+    D.createDirectory "dir/sd"
+    createFileWithContents "dir/sd/a" "a"
 
-    runEitherT $ H.stage "dir/a"
+    runEitherT $ H.stage "dir/sd/a"
     runEitherT $ quietCommit Nothing
 
-    createFileWithContents "dir/b" "b"
+    createFileWithContents "dir/sd/b" "b"
+    createFileWithContents "dir/sd/c" "c"
 
-    runEitherT $ H.stage "dir"
+    runEitherT $ H.stage "dir/sd"
 
-    --eitherStagingArea <- runEitherT H.loadStagingArea
-    return ()
-    --(Right ["dir/b"]) @?= (adds <$> eitherStagingArea)
-    --(Right ["dir/a"]) @?= (mods <$> eitherStagingArea)
-    --(Right [])        @?= (dels <$> eitherStagingArea)
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
+    stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
+    unstagedFiles status @?= []
 
--- | No files should result in an empty staging area
+testStageDirectoryEdgeCase1 :: Assertion
+testStageDirectoryEdgeCase1 = do
+    H.init (Just Quiet)
+
+    D.createDirectory "dir"
+    D.createDirectory "dir/sd"
+    createFileWithContents "dir/sd/a" "a"
+
+    runEitherT $ H.stage "dir/sd/a"
+    runEitherT $ quietCommit Nothing
+
+    createFileWithContents "dir/sd/b" "b"
+    createFileWithContents "dir/sd/c" "c"
+
+    D.setCurrentDirectory "dir"
+    runEitherT $ H.stage "sd"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
+    stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
+    unstagedFiles status @?= []
+
+    D.setCurrentDirectory ".."
+
+testStageDirectoryEdgeCase2 :: Assertion
+testStageDirectoryEdgeCase2 = do
+    H.init (Just Quiet)
+
+    D.createDirectory "dir"
+    D.createDirectory "dir/sd"
+    createFileWithContents "dir/sd/a" "a"
+
+    runEitherT $ H.stage "dir/sd/a"
+    runEitherT $ quietCommit Nothing
+
+    createFileWithContents "dir/sd/b" "b"
+    createFileWithContents "dir/sd/c" "c"
+
+    D.setCurrentDirectory "dir"
+    runEitherT $ H.stage "."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
+    stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
+    unstagedFiles status @?= []
+
+    D.setCurrentDirectory ".."
+
+testStageDirectoryEdgeCase3 :: Assertion
+testStageDirectoryEdgeCase3 = do
+    H.init (Just Quiet)
+
+    D.createDirectory "dir"
+    D.createDirectory "dir/sd"
+    createFileWithContents "dir/sd/a" "a"
+
+    runEitherT $ H.stage "dir/sd/a"
+    runEitherT $ quietCommit Nothing
+
+    createFileWithContents "dir/sd/b" "b"
+    createFileWithContents "dir/sd/c" "c"
+    createFileWithContents "x" "x"
+
+    D.setCurrentDirectory "dir"
+    runEitherT $ H.stage "../x"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` should not fail" (isRight eitherStatus)
+    let status = fromRight undefined eitherStatus
+    let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
+    stagedFiles @?= StagingArea ["x"] [] []
+    unstagedFiles status @?= (sort ["dir/sd/b", "dir/sd/c"])
+
+    D.setCurrentDirectory ".."
+
+testStageNonexistentFile :: Assertion
+testStageNonexistentFile = do
+    H.init (Just Quiet)
+
+    eitherStagingArea <- runEitherT $ H.stage "xyz"
+
+    eitherStagingArea @?= Left "Can't stage file or directory at path \"xyz\"; no file or directory exists at that path."
+
+testStageNonexistentDirectory :: Assertion
+testStageNonexistentDirectory = do
+    H.init (Just Quiet)
+
+    eitherStagingArea <- runEitherT $ H.stage "xyz"
+
+    eitherStagingArea @?= Left "Can't stage file or directory at path \"xyz\"; no file or directory exists at that path."
+
+testStagePathOutsideOfRepo :: Assertion
+testStagePathOutsideOfRepo = do
+    D.createDirectory "repo"
+    createFileWithContents "a" "a"
+    D.setCurrentDirectory "repo"
+
+    H.init (Just Quiet)
+
+    eitherStagingArea <- runEitherT $ H.stage "../a"
+
+    D.setCurrentDirectory ".."
+
+    eitherStagingArea @?= Left "Can't stage file or directory outside of the repository: ../a"
+
 testStatusCase1 :: Assertion
 testStatusCase1 = do
     H.init (Just Quiet)
@@ -186,7 +291,6 @@ testStatusCase1 = do
     assertBool "`status` command should not fail" (isRight eitherStatus)
     stagingArea <$> eitherStatus @?= Right Default.def
 
--- | No files should result in no untracked files
 testStatusCase2 :: Assertion
 testStatusCase2 = do
     H.init (Just Quiet)
@@ -196,7 +300,6 @@ testStatusCase2 = do
     assertBool "`status` command should not fail" (isRight eitherStatus)
     unstagedFiles <$> eitherStatus @?= Right Default.def
 
--- | Checks that we correctly identify all unstaged files
 testStatusCase3 :: Assertion
 testStatusCase3 = do
     H.init (Just Quiet)
@@ -211,7 +314,6 @@ testStatusCase3 = do
     unstagedFiles status @?= ["a"]
     return ()
 
--- | Checks that the staging area is properly cleared after commits
 testStatusCase4 :: Assertion
 testStatusCase4 = do
     H.init (Just Quiet)
@@ -239,7 +341,6 @@ testStatusCase4 = do
 
     return ()
 
--- Checks that the staging area recognizes modifications to files
 testStatusCase5 :: Assertion
 testStatusCase5 = do
     H.init (Just Quiet)
@@ -257,45 +358,36 @@ testStatusCase5 = do
 
     return ()
 
--- | Test the `horse init` command
 testInit :: Assertion
 testInit = do
     H.init (Just Quiet)
     rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
--- | Verify that a command failed gracefully, as it should when run
--- | without a repository in which to execute
 testNoRepo :: EitherT Error IO a -> Assertion
 testNoRepo = (=<<) ((@?=) True . isLeft) . runEitherT
 
--- | Test the command `horse status` when run without a repository
 testNoRepoStatus :: Assertion
 testNoRepoStatus = testNoRepo $ H.status (Just Quiet)
 
--- | Test the command `horse stage` when run without a repository
 testNoRepoStage :: Assertion
 testNoRepoStage = testNoRepo $ H.stage Default.def
 
--- | Test the command `horse checkout` when run without a repository
 testNoRepoCheckout :: Assertion
 testNoRepoCheckout = testNoRepo $ H.checkout Default.def (Just Quiet)
 
--- | Test the command `horse commit` when run without a repository
 testNoRepoCommit :: Assertion
 testNoRepoCommit = testNoRepo $ quietCommit Default.def
 
--- | Test the command `horse show` when run without a repository
 testNoRepoShow :: Assertion
 testNoRepoShow = testNoRepo $ H.show Default.def (Just Quiet)
 
--- | Test the command `horse log` when run without a repository
 testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 
--- | Tests diffing. Assumes working `horse commit`
 testCheckout :: Assertion
-testCheckout = do 
+testCheckout = do
+
     H.init (Just Quiet)
 
     ----------------
@@ -393,7 +485,6 @@ testCheckout = do
         quietCheckout :: String -> IO ()
         quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
 
--- unstaged files
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
     H.init (Just Quiet)
@@ -549,10 +640,6 @@ testCommitFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ quietCommit Nothing
-    --cd <- D.getCurrentDirectory
-    --putStrLn $ "CDURRR: " ++ cd
-    --c <- D.getDirectoryContents "."
-    --putStrLn $ "CNT:" ++ (show c)
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "2"
@@ -721,8 +808,28 @@ tests = testGroup "unit tests"
         "Testing command `stage`"
         (runTest testStage)
     , testCase
+        "Testing command `stage` (edge case 1)"
+        (runTest testStagePathOutsideOfRepo)
+     -- can't yet tell which files were ever committed, so we can't
+     -- distinguish between a deleted file and a nonexistent one.
+     --, testCase
+     --    "Testing command `stage` (edge case 1)"
+     --    (runTest testStageNonexistentFile)
+     --, testCase
+     --    "Testing command `stage` (edge case 2)"
+     --    (runTest testStageNonexistentDirectory)
+    , testCase
         "Testing command `stage` when given a directory"
         (runTest testStageDirectory)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 1)"
+        (runTest testStageDirectoryEdgeCase1)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 2)"
+        (runTest testStageDirectoryEdgeCase2)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 3)"
+        (runTest testStageDirectoryEdgeCase3)
     , testCase
         "Testing command `status` (case 1)"
         (runTest testStatusCase1)

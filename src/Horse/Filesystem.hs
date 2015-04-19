@@ -3,12 +3,19 @@ module Horse.Filesystem
 ( createFileWithContents
 , destructivelyCreateDirectory
 , getDirectoryContentsRecursiveSafe
+, isPrefix
+, dropPrefix
+, relativizePath
+, collapse
 ) where
 
 import Control.Applicative
 import Control.Monad
 
 import Data.List ((\\))
+
+import qualified Filesystem.Path (collapse)
+import Filesystem.Path.CurrentOS (decodeString, encodeString)
 
 import qualified System.IO as IO
 import qualified System.Directory as D
@@ -87,3 +94,35 @@ dropUntil f (x:xs) =
     if f x
         then (x:xs)
         else dropUntil f xs
+
+-- | Returns whether the first parameter is a prefix of the second.
+isPrefix :: (Eq a) => [a] -> [a] -> Bool
+isPrefix [] bs = True
+isPrefix (a:as) [] = False
+isPrefix (a:as) (b:bs)
+    | a /= b = False
+    | otherwise = isPrefix as bs
+
+-- | assumes the first parameter is a prefix of the second; errors if
+--   false
+dropPrefix :: (Eq a) => [a] -> [a] -> [a]
+dropPrefix [] bs = bs
+dropPrefix (a:as) (b:bs)
+    | a /= b = error "not a prefix"
+    | otherwise = dropPrefix as bs
+
+-- | Given (in order) a path to relativize, the root of the repo, and
+--   the user's directory (to which the first parameter should be
+--   relative), returns the first parameter made relative to the root
+--   of the repo (the second parameter).
+relativizePath :: FilePath -> FilePath -> FilePath -> FilePath
+relativizePath path root userDirectory =
+    collapse . tail $ (dropPrefix root userDirectory) </> path
+
+-- | (wrapper around 'Filesystem.Path.collapse')
+collapse :: FilePath -> FilePath
+collapse
+    = (\p -> if p == "" then "." else p)
+    . encodeString
+    . Filesystem.Path.collapse
+    . decodeString

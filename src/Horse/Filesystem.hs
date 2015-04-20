@@ -7,6 +7,9 @@ module Horse.Filesystem
 , dropPrefix
 , relativizePath
 , collapse
+, repoRoot
+, filesystemAncestors
+, isRepositoryOrAncestorIsRepo
 ) where
 
 import Control.Applicative
@@ -14,7 +17,8 @@ import Control.Monad
 
 import Data.List ((\\))
 
-import qualified Filesystem.Path (collapse)
+import Filesystem.Path (parent)
+import qualified Filesystem.Path (FilePath, collapse)
 import Filesystem.Path.CurrentOS (decodeString, encodeString)
 
 import qualified System.IO as IO
@@ -22,7 +26,11 @@ import qualified System.Directory as D
 
 import qualified Data.ByteString as ByteString
 
-import Horse.Utils ((</>))
+import Horse.Utils
+    ( (</>)
+    , iterateMaybe
+    , toMaybe )
+import qualified Horse.Constants as HC
 
 -- | Creates a file on disk with the specified content.
 createFileWithContents :: FilePath -> ByteString.ByteString -> IO ()
@@ -115,9 +123,42 @@ dropPrefix (a:as) (b:bs)
 --   the user's directory (to which the first parameter should be
 --   relative), returns the first parameter made relative to the root
 --   of the repo (the second parameter).
-relativizePath :: FilePath -> FilePath -> FilePath -> FilePath
-relativizePath path root userDirectory =
-    collapse . tail $ (dropPrefix root userDirectory) </> path
+relativizePath :: FilePath -> FilePath -> IO FilePath
+relativizePath path userDirectory = do
+    root <- repoRoot
+    return . collapse . tail $ (dropPrefix root userDirectory) </> path
+
+repoRoot :: IO FilePath
+repoRoot = do
+    ancestors <- D.getCurrentDirectory >>= filesystemAncestors
+    last <$> takeWhileM isRepositoryOrAncestorIsRepo ancestors
+    where
+        -- | Monadic 'takeWhile'.
+        takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]
+        takeWhileM _ []     = return []
+        takeWhileM p (x:xs) = do
+            q <- p x
+            if q
+                then (takeWhileM p xs) >>= (return . (:) x)
+                else return []
+
+-- | Gets the ancestors of the current directory.
+filesystemAncestors :: FilePath -> IO [FilePath]
+filesystemAncestors directory = do
+    let ancestors = iterateMaybe getParent (decodeString directory)
+    return . (:) directory . map encodeString $ ancestors
+    where
+        getParent :: Filesystem.Path.FilePath -> Maybe Filesystem.Path.FilePath
+        getParent curr = toMaybe (parent curr) ((/=) curr)
+
+-- | Returns whether the current directory is part of a repository.
+isRepositoryOrAncestorIsRepo :: FilePath -> IO Bool
+isRepositoryOrAncestorIsRepo filepath
+    = (filesystemAncestors filepath) >>= (fmap or . mapM isRepo)
+    where
+        -- | Returns whether the specified directory is part of a repository.
+        isRepo :: FilePath -> IO Bool
+        isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
 
 -- | (wrapper around 'Filesystem.Path.collapse')
 collapse :: FilePath -> FilePath

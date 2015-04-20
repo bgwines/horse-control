@@ -74,7 +74,6 @@ import Horse.Utils
     , putStrLn'
     , eitherToMaybe
     , fromEitherMaybeDefault
-    , iterateMaybe
     , (</>)
     , whenM
     , toMaybe )
@@ -117,7 +116,7 @@ init maybeVerbosity = do
     repositoryAlreadyExists <- D.doesDirectoryExist HC.repositoryDataDir
     when repositoryAlreadyExists $
         fail "Error: repository already exists"
-    isSubdirOfRepo <- isRepositoryOrAncestorIsRepo "."
+    isSubdirOfRepo <- HF.isRepositoryOrAncestorIsRepo "."
     when isSubdirOfRepo $
         fail "Error: directory is subdirectory of another horse-control repo"
 
@@ -154,14 +153,27 @@ status maybeVerbosity = do
 
     unless (verbosity == Quiet) $ do
         putStrLn' "Staged changes:"
-        liftIO . print $ stagingArea
+        print' stagingArea
         putStrLn' ""
 
         putStrLn' "Unstaged changes:"
-        liftIO . print $ unstagedFiles
+        print' unstagedFiles
 
     liftIO $ D.setCurrentDirectory userDirectory
     right currentStatus
+    where
+        -- | Gets all files that have modifications that are not staged.
+        loadUnstagedFiles :: EitherT Error IO [FilePath]
+        loadUnstagedFiles = do
+            allFilesDiff <- diffWithHEAD Nothing
+
+            stagedFiles <- files <$> HIO.loadStagingArea
+
+            right
+                $ filter (not . (flip elem $ stagedFiles))
+                . map FD.comp
+                . FD.filediffs
+                $ allFilesDiff
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
@@ -177,10 +189,9 @@ stage path = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    root <- liftIO repoRoot
     -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
-    let relativePath = HF.relativizePath path root userDirectory
+    relativePath <- liftIO $ HF.relativizePath path userDirectory
     when (HF.isPrefix ".." relativePath) $ do
         left $ "Can't stage file or directory outside of the repository: " ++ path
 
@@ -196,9 +207,10 @@ stage path = do
     let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
     let updatedStagingArea = foldl (flip ($)) stagingArea updateFunctions
 
-    liftIO $ HIO.writeStagingArea updatedStagingArea
+    liftIO $ do
+        HIO.writeStagingArea updatedStagingArea
+        D.setCurrentDirectory userDirectory
 
-    liftIO $ D.setCurrentDirectory userDirectory
     right updatedStagingArea
     where
         updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
@@ -242,11 +254,11 @@ commit maybeMessage maybeVerbosity = do
     let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
-    liftIO $ HIO.writeCommit completeCommit
-
-    liftIO $ HIO.writeHeadHash commitHash
-
-    liftIO $ HIO.writeStagingArea (Default.def :: StagingArea)
+    liftIO $ do
+        HIO.writeCommit completeCommit
+        HIO.writeHeadHash commitHash
+        HIO.writeStagingArea (Default.def :: StagingArea)
+        D.setCurrentDirectory userDirectory
 
     when (verbosity == Verbose) $ do
         print' completeCommit
@@ -258,8 +270,6 @@ commit maybeMessage maybeVerbosity = do
         putStrLn' $ "0" ++ " files changed, "
             ++ "0" ++ " insertions(+), "
             ++ "0" ++ " deletions(-)"
-
-    liftIO $ D.setCurrentDirectory userDirectory
 
     right completeCommit
     where
@@ -297,11 +307,11 @@ show maybeRef maybeVerbosity = do
     let ref = fromMaybe headHash (stringToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
 
-    liftIO $ when (verbosity /= Quiet) (print commit)
+    liftIO $ do
+        when (verbosity /= Quiet) (print commit)
+        D.setCurrentDirectory userDirectory
 
-    liftIO $ D.setCurrentDirectory userDirectory
     right commit
-
 
 -- | Prints the history from the current commit backwards. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
@@ -324,7 +334,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
             history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
 
             unless (verbosity == Quiet) $ do
-                liftIO . print $ hash <$> history
+                print' $ hash <$> history
             right history
         else right []
     liftIO $ D.setCurrentDirectory userDirectory
@@ -337,23 +347,10 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
 assertIsRepositoryAndCdToRoot = do
     userDirectory <- liftIO D.getCurrentDirectory
-    isRepository <- liftIO $ isRepositoryOrAncestorIsRepo userDirectory
+    isRepository <- liftIO $ HF.isRepositoryOrAncestorIsRepo userDirectory
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
-    liftIO $ repoRoot >>= D.setCurrentDirectory
-
--- | Gets all files that have modifications that are not staged.
-loadUnstagedFiles :: EitherT Error IO [FilePath]
-loadUnstagedFiles = do
-    allFilesDiff <- diffWithHEAD Nothing
-
-    stagedFiles <- files <$> HIO.loadStagingArea
-
-    right
-        $ filter (not . (flip elem $ stagedFiles))
-        . map FD.comp
-        . FD.filediffs
-        $ allFilesDiff
+    liftIO $ HF.repoRoot >>= D.setCurrentDirectory
 
 -- | Identifies whether any commits have been made in the current
 --   repository.
@@ -374,7 +371,7 @@ checkoutToDirectory dir hash = do
     where
         clearDirectory :: IO ()
         clearDirectory = do
-            allContents <- liftIO $ D.getDirectoryContents dir
+            allContents <- D.getDirectoryContents dir
             let toDelete = allContents \\ [HC.repositoryDataDir, "..", "."]
             mapM_ rm toDelete
 
@@ -394,17 +391,17 @@ loadHistory commit
     $ iterateMaybeM
         (fmap eitherToMaybe . runEitherT . loadParent)
         commit
-
--- | Attempts to load the parent commit for a given commit.
-loadParent :: Commit -> EitherT Error IO Commit
-loadParent commit =
-    if isJust $ parentHash commit
-        then HIO.loadCommit
-            . fromJust
-            . parentHash
-            $ commit
-        else left $ "No parent for commit with hash " ++
-            (Prelude.show . hash $ commit)
+    where
+        -- | Attempts to load the parent commit for a given commit.
+        loadParent :: Commit -> EitherT Error IO Commit
+        loadParent commit =
+            if isJust $ parentHash commit
+                then HIO.loadCommit
+                    . fromJust
+                    . parentHash
+                    $ commit
+                else left $ "No parent for commit with hash " ++
+                    (Prelude.show . hash $ commit)
 
 -- | Given any string, attempt to convert it to a hash.
 --   Succeeds if the string is in a hash format, even if
@@ -439,38 +436,6 @@ refToHash unparsedRef = do
 
         isRelativeSyntax :: Char -> Bool
         isRelativeSyntax ch = ch == parentSyntax
-
--- | Returns whether the specified directory is part of a repository.
-isRepo :: FilePath -> IO Bool
-isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
-
--- | Gets the ancestors of the current directory.
-filesystemAncestors :: FilePath -> IO [FilePath]
-filesystemAncestors directory = do
-    let ancestors = iterateMaybe getParent (decodeString directory)
-    return . (:) directory . map encodeString $ ancestors
-    where
-        getParent :: Filesystem.Path.FilePath -> Maybe Filesystem.Path.FilePath
-        getParent curr = toMaybe (parent curr) ((/=) curr)
-
--- | Returns whether the current directory is part of a repository.
-isRepositoryOrAncestorIsRepo :: FilePath -> IO Bool
-isRepositoryOrAncestorIsRepo filepath
-    = (filesystemAncestors filepath) >>= (fmap or . mapM isRepo)
-
-repoRoot :: IO FilePath
-repoRoot = do
-    ancestors <- D.getCurrentDirectory >>= filesystemAncestors
-    last <$> takeWhileM isRepositoryOrAncestorIsRepo ancestors
-    where
-        -- | Monadic 'takeWhile'.
-        takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]
-        takeWhileM _ []     = return []
-        takeWhileM p (x:xs) = do
-            q <- p x
-            if q
-                then (takeWhileM p xs) >>= (return . (:) x)
-                else return []
 
 -- * diffing
 
@@ -515,7 +480,3 @@ diffWithHEAD maybeFilesToDiff = do
         formatChar '.' = '-'
         formatChar ':' = '-'
         formatChar ch = ch
-
--- | `True` upon success, `False` upon failure.
-applyDiff :: FD.Diff -> EitherT Error IO ()
-applyDiff = liftIO . (flip FD.applyToDirectory) "."

@@ -248,7 +248,7 @@ testStageDirectoryEdgeCase3 = do
     let status = fromRight undefined eitherStatus
     let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
     stagedFiles @?= StagingArea ["x"] [] []
-    unstagedFiles status @?= (sort ["dir/sd/b", "dir/sd/c"])
+    (sort $ unstagedFiles status) @?= (sort ["dir/sd/b", "dir/sd/c"])
 
     D.setCurrentDirectory ".."
 

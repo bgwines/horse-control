@@ -33,6 +33,7 @@ import Control.Monad.Trans.Either
 -- qualified imports
 
 import qualified Filediff as FD
+import qualified Filediff.Stats as FD
 import qualified Filediff.Types as FD
 
 import qualified System.IO as IO
@@ -267,9 +268,17 @@ commit maybeMessage maybeVerbosity = do
         putStrLn' $ "[<branch> "
             ++ (Prelude.show . ByteString.take 8 $ commitHash)
             ++  "] " ++ message
-        putStrLn' $ "0" ++ " files changed, "
-            ++ "0" ++ " insertions(+), "
-            ++ "0" ++ " deletions(-)"
+
+        let numFiles = FD.numFilesAffected stagedDiff
+        let numAdds = FD.numAddedLines stagedDiff
+        let numDels = FD.numDeletedLines stagedDiff
+        let filesString = if numFiles == 1
+            then " file"
+            else " files"
+        putStrLn' $ ""
+            ++ Prelude.show numFiles ++ filesString ++ " changed, "
+            ++ Prelude.show numAdds ++ " insertions(+), "
+            ++ Prelude.show numDels ++ " deletions(-)"
 
     right completeCommit
     where

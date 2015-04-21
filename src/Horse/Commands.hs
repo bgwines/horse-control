@@ -53,7 +53,7 @@ import qualified Database.LevelDB.Internal as DBI
 
 import qualified Filesystem.Path (FilePath, collapse)
 
-import Data.List (foldl', (\\))
+import Data.List (foldl', (\\), isInfixOf, isPrefixOf)
 
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
@@ -193,13 +193,9 @@ stage path = do
     -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
     relativePath <- liftIO $ HF.relativizePath path userDirectory
-    when (HF.isPrefix ".." relativePath) $ do
+    when (isPrefixOf ".." relativePath) $ do
         left $ "Can't stage file or directory outside of the repository: " ++ path
-
-    isDir <- liftIO $ D.doesDirectoryExist relativePath
-    relativePaths <- if isDir
-        then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
-        else return [relativePath]
+    relativePaths <- getRelativePaths relativePath
 
     diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
 
@@ -214,6 +210,15 @@ stage path = do
 
     right updatedStagingArea
     where
+        getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
+        getRelativePaths relativePath = do
+            isDir <- liftIO $ D.doesDirectoryExist relativePath
+            unfiltered <- if isDir
+                then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
+                else return [relativePath]
+            let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
+            right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
+
         updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
         updateStagingArea
             (FD.Filediff base _ change) stagingArea = case change of {

@@ -3,7 +3,6 @@ module Horse.Filesystem
 ( createFileWithContents
 , destructivelyCreateDirectory
 , getDirectoryContentsRecursiveSafe
-, isPrefix
 , dropPrefix
 , relativizePath
 , collapse
@@ -102,14 +101,6 @@ dropUntil f (x:xs) =
     if f x
         then (x:xs)
         else dropUntil f xs
-
--- | Returns whether the first parameter is a prefix of the second.
-isPrefix :: (Eq a) => [a] -> [a] -> Bool
-isPrefix [] bs = True
-isPrefix (a:as) [] = False
-isPrefix (a:as) (b:bs)
-    | a /= b = False
-    | otherwise = isPrefix as bs
 
 -- | assumes the first parameter is a prefix of the second; errors if
 --   false

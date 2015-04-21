@@ -252,6 +252,40 @@ testStageDirectoryEdgeCase3 = do
 
     D.setCurrentDirectory ".."
 
+testStageDirectoryEdgeCase4 :: Assertion
+testStageDirectoryEdgeCase4 = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+
+    runEitherT $ H.stage "."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
+
+testStageDirectoryEdgeCase5 :: Assertion
+testStageDirectoryEdgeCase5 = do
+    H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+
+    runEitherT $ H.stage "./"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
+
+testStageDirectoryEdgeCase6 :: Assertion
+testStageDirectoryEdgeCase6 = do
+    H.init (Just Quiet)
+
+    D.createDirectory "dir"
+    createFileWithContents "a" "a"
+
+    runEitherT $ H.stage "dir/.."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
+
 testStageNonexistentFile :: Assertion
 testStageNonexistentFile = do
     H.init (Just Quiet)
@@ -830,6 +864,15 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `stage` when given a directory (edge case 3)"
         (runTest testStageDirectoryEdgeCase3)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 4)"
+        (runTest testStageDirectoryEdgeCase4)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 5)"
+        (runTest testStageDirectoryEdgeCase5)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 6)"
+        (runTest testStageDirectoryEdgeCase6)
     , testCase
         "Testing command `status` (case 1)"
         (runTest testStatusCase1)

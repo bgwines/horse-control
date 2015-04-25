@@ -13,6 +13,7 @@ module Horse.Utils
 , iterateMaybe
 , toMaybe
 , whenM
+, unlessM
 
 -- * combinators
 , (|$|)
@@ -88,6 +89,10 @@ iterateMaybe f curr = case f curr of
 -- | Monadic `when`.
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM mCond action = mCond >>= (flip when $ action)
+
+-- | Monadic `unless`.
+unlessM :: Monad m => m Bool -> m () -> m ()
+unlessM mCond action = mCond >>= (flip unless $ action)
 
 -- * combinators
 

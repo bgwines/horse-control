@@ -82,6 +82,7 @@ import Horse.Utils
     , fromEitherMaybeDefault
     , (</>)
     , whenM
+    , unlessM
     , toMaybe )
 import qualified Horse.IO as HIO
 import qualified Horse.Filesystem as HF
@@ -94,55 +95,51 @@ config maybeName maybeEmail = do
     configPath <- HC.configPath
     configFileExistedBefore <- D.doesFileExist configPath
 
-    unless configFileExistedBefore $ do
-        HF.createFileWithContents configPath ByteString.empty
+    if configFileExistedBefore
+        then do
+            eitherUserInfo <- runEitherT $ userInfo <$> HIO.loadConfig
+            let updatedUserInfo = UserInfo {
+                  name = fromEitherMaybeDefault
+                    (name <$> eitherUserInfo)
+                    maybeName
+                , email = fromEitherMaybeDefault
+                    (email <$> eitherUserInfo)
+                    maybeEmail }
+            HIO.writeConfig $ Config { userInfo = updatedUserInfo }
+        else do
+            HF.createFileWithContents configPath ByteString.empty
 
-        let userInfo = UserInfo {
-              name = fromMaybe Default.def maybeName
-            , email = fromMaybe Default.def maybeEmail }
-        HIO.writeConfig $ Config { userInfo = userInfo }
-
-    when configFileExistedBefore $ do
-        eitherUserInfo <- runEitherT $ userInfo <$> HIO.loadConfig
-        let updatedUserInfo = UserInfo {
-              name = fromEitherMaybeDefault
-                (name <$> eitherUserInfo)
-                maybeName
-            , email = fromEitherMaybeDefault
-                (email <$> eitherUserInfo)
-                maybeEmail }
-        HIO.writeConfig $ Config { userInfo = updatedUserInfo }
+            let userInfo = UserInfo {
+                  name = fromMaybe Default.def maybeName
+                , email = fromMaybe Default.def maybeEmail }
+            HIO.writeConfig $ Config { userInfo = userInfo }
 
 -- | Initializes an empty repository in the current directory. If
 --   one currently exists, it aborts.
-init :: Maybe Verbosity -> IO ()
+init :: Maybe Verbosity -> EitherT Error IO ()
 init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
-    repositoryAlreadyExists <- D.doesDirectoryExist HC.repositoryDataDir
-    when repositoryAlreadyExists $
-        fail "Error: repository already exists"
-    isSubdirOfRepo <- HF.isRepositoryOrAncestorIsRepo "."
-    when isSubdirOfRepo $
-        fail "Error: directory is subdirectory of another horse-control repo"
+    whenM (liftIO $ HF.isRepositoryOrAncestorIsRepo ".") $
+        left "Error: directory is or is subdirectory of another horse-control repo"
 
-    -- initialize config file; it's read from
-    -- in this function and hence needs to exist
-    config Nothing Nothing 
+    liftIO $ do
+        -- initialize config file; it's read from
+        -- in this function and hence needs to exist
+        config Nothing Nothing 
 
-    mapM_ HF.destructivelyCreateDirectory HC.directories
+        mapM_ HF.destructivelyCreateDirectory HC.directories
 
-    let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
-    mapM_
-        ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
-        HC.databasePaths
+        let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
+        mapM_ ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
+            HC.databasePaths
 
-    sequence $ map (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
+        mapM_ (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
-    currDir <- D.getCurrentDirectory
-    unless (verbosity == Quiet) $
-        putStrLn $ "Initialized existing horse-control repository in"
-            ++ currDir ++ "/" ++ HC.repositoryDataDir
+        currDir <- D.getCurrentDirectory
+        unless (verbosity == Quiet) $
+            putStrLn $ "Initialized existing horse-control repository in"
+                ++ currDir ++ "/" ++ HC.repositoryDataDir
 
 -- | Gets and prints the difference between the current state of the
 -- filesystem and the state of the filesystem at HEAD.
@@ -171,15 +168,15 @@ status maybeVerbosity = do
         -- | Gets all files that have modifications that are not staged.
         loadUnstagedFiles :: EitherT Error IO [FilePath]
         loadUnstagedFiles = do
-            allFilesDiff <- diffWithHEAD Nothing
-
             stagedFiles <- files <$> HIO.loadStagingArea
+            diffWithHEAD Nothing
+                >>= right . getUnstagedFilesFromDiff stagedFiles
 
-            right
-                $ filter (not . (flip elem $ stagedFiles))
-                . map FD.comp
-                . FD.filediffs
-                $ allFilesDiff
+        getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
+        getUnstagedFilesFromDiff stagedFiles
+            = filter (not . (flip elem $ stagedFiles))
+            . map FD.comp
+            . FD.filediffs
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
@@ -218,15 +215,18 @@ stage path = do
         getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
         getRelativePaths relativePath = do
             isDir <- liftIO $ D.doesDirectoryExist relativePath
+
             unfiltered <- if isDir
                 then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
-                else return [relativePath]
+                else right [relativePath]
+
             let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
+
             right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
 
         updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
-        updateStagingArea
-            (FD.Filediff base _ change) stagingArea = case change of {
+        updateStagingArea (FD.Filediff base _ change) stagingArea =
+            case change of {
             FD.Add _ -> stagingArea { adds = base : (adds stagingArea) };
             FD.Mod _ -> stagingArea { mods = base : (mods stagingArea) };
             FD.Del _ -> stagingArea { dels = base : (dels stagingArea) };
@@ -239,8 +239,7 @@ commitAmend maybeMessage maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    canAmend <- commitsHaveBeenMade
-    unless canAmend $
+    unlessM commitsHaveBeenMade $
         left "Error: cannot amend when no commits have been made."
 
     latestCommit <- commit maybeMessage maybeVerbosity
@@ -259,6 +258,7 @@ commit maybeMessage maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
+    -- commit params
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
 
     isFirstCommit <- ((==) Default.def) <$> HIO.loadHeadHash
@@ -323,23 +323,10 @@ squash ref = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    endHash <- refToHash ref
     historyToRoot <- log Nothing Nothing (Just Quiet)
-    let history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
 
-    let squashedAuthor = author . last $ history
-    let squashedDate = date . last $ history
-    let squashedParentHash = parentHash . last $ history
-    let squashedDiff = mconcat . map diffWithPrimaryParent . reverse $ history
-    let squashedMessage = mconcat . map message $ history
-    let unhashedCommit = Commit {
-        author                  = squashedAuthor
-        , date                  = squashedDate
-        , hash                  = Default.def
-        , parentHash            = squashedParentHash
-        , diffWithPrimaryParent = squashedDiff
-        , message               = squashedMessage }
-    let squashedCommit = unhashedCommit { hash = hashCommit unhashedCommit }
+    endHash <- refToHash ref
+    let squashedCommit = getSquashedCommit historyToRoot endHash
 
     liftIO $ do
         HIO.writeCommit squashedCommit
@@ -347,6 +334,28 @@ squash ref = do
         D.setCurrentDirectory userDirectory
 
     right squashedCommit
+    where
+        getSquashedCommit :: [Commit] -> Hash -> Commit
+        getSquashedCommit historyToRoot endHash =
+            unhashedCommit { hash = hashCommit unhashedCommit }
+            where
+                history :: [Commit]
+                history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
+
+                squashBase :: Commit
+                squashBase = last history
+
+                squashedDiff :: FD.Diff
+                squashedDiff = mconcat . map diffWithPrimaryParent . reverse $ history
+
+                unhashedCommit :: Commit
+                unhashedCommit = Commit {
+                    author                  = author squashBase
+                    , date                  = date squashBase
+                    , hash                  = Default.def
+                    , parentHash            = parentHash squashBase
+                    , diffWithPrimaryParent = squashedDiff
+                    , message               = mconcat . map message $ history }
 
 -- | Sets the contents of the filesystem to the state it had in the
 --   specified commit.
@@ -370,13 +379,12 @@ show maybeRef maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    headHash <- HIO.loadHeadHash
-    let ref = fromMaybe headHash (stringToHash <$> maybeRef)
+    ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
 
-    liftIO $ do
-        when (verbosity /= Quiet) (print commit)
-        D.setCurrentDirectory userDirectory
+    when (verbosity /= Quiet) $ print' commit
+
+    liftIO $ D.setCurrentDirectory userDirectory
 
     right commit
 
@@ -394,17 +402,17 @@ log maybeRef maybeNumCommits maybeVerbosity = do
     haveCommitsBeenMade <- commitsHaveBeenMade
     history <- if haveCommitsBeenMade
         then do
-            headHash <- HIO.loadHeadHash
-            let ref = maybe headHash stringToHash maybeRef
-
-            commit <- HIO.loadCommit ref
+            commitHash <- maybe HIO.loadHeadHash refToHash maybeRef
+            commit <- HIO.loadCommit commitHash
             history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
 
             unless (verbosity == Quiet) $ do
                 print' $ hash <$> history
             right history
         else right []
+
     liftIO $ D.setCurrentDirectory userDirectory
+
     right history
 
 -- * helper functions (not exposed)
@@ -455,9 +463,8 @@ loadHistory :: Commit -> EitherT Error IO [Commit]
 loadHistory commit
     = liftIO
     . fmap ((:) commit)
-    $ iterateMaybeM
-        (fmap eitherToMaybe . runEitherT . loadParent)
-        commit
+    . iterateMaybeM (fmap eitherToMaybe . runEitherT . loadParent)
+    $ commit
     where
         -- | Attempts to load the parent commit for a given commit.
         loadParent :: Commit -> EitherT Error IO Commit

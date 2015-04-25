@@ -94,7 +94,7 @@ noargCommit = H.commit Nothing (Just Quiet)
 
 testLog :: Assertion
 testLog = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
         let messages = map Just ["A", "B", "C", "D"]
         commits <- mapM quietCommit messages
@@ -107,7 +107,7 @@ testLog = do
 
 testLogEdgeCase1 :: Assertion
 testLogEdgeCase1 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
         history <- reverse <$> H.log Nothing Nothing (Just Quiet)
 
@@ -119,7 +119,7 @@ testLogEdgeCase1 = do
 
 testLogEdgeCase2 :: Assertion
 testLogEdgeCase2 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
         let messages = map Just ["A", "B", "C", "D"]
         commits <- mapM quietCommit messages
@@ -133,7 +133,7 @@ testLogEdgeCase2 = do
 
 testLogEdgeCase3 :: Assertion
 testLogEdgeCase3 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
         let messages = map Just ["A", "B", "C", "D"]
         commits <- mapM quietCommit messages
@@ -147,7 +147,7 @@ testLogEdgeCase3 = do
 
 testStage :: Assertion
 testStage = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
 
@@ -161,7 +161,7 @@ testStage = do
 
 testStageDirectory :: Assertion
 testStageDirectory = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -184,7 +184,7 @@ testStageDirectory = do
 
 testStageDirectoryEdgeCase1 :: Assertion
 testStageDirectoryEdgeCase1 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -210,7 +210,7 @@ testStageDirectoryEdgeCase1 = do
 
 testStageDirectoryEdgeCase2 :: Assertion
 testStageDirectoryEdgeCase2 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -236,7 +236,7 @@ testStageDirectoryEdgeCase2 = do
 
 testStageDirectoryEdgeCase3 :: Assertion
 testStageDirectoryEdgeCase3 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -263,7 +263,7 @@ testStageDirectoryEdgeCase3 = do
 
 testStageDirectoryEdgeCase4 :: Assertion
 testStageDirectoryEdgeCase4 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
 
@@ -274,7 +274,7 @@ testStageDirectoryEdgeCase4 = do
 
 testStageDirectoryEdgeCase5 :: Assertion
 testStageDirectoryEdgeCase5 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
 
@@ -285,7 +285,7 @@ testStageDirectoryEdgeCase5 = do
 
 testStageDirectoryEdgeCase6 :: Assertion
 testStageDirectoryEdgeCase6 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "dir"
     createFileWithContents "a" "a"
@@ -297,7 +297,7 @@ testStageDirectoryEdgeCase6 = do
 
 testStageNonexistentFile :: Assertion
 testStageNonexistentFile = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -305,7 +305,7 @@ testStageNonexistentFile = do
 
 testStageNonexistentDirectory :: Assertion
 testStageNonexistentDirectory = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -317,7 +317,7 @@ testStagePathOutsideOfRepo = do
     createFileWithContents "a" "a"
     D.setCurrentDirectory "repo"
 
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     eitherStagingArea <- runEitherT $ H.stage "../a"
 
@@ -327,7 +327,7 @@ testStagePathOutsideOfRepo = do
 
 testStatusCase1 :: Assertion
 testStatusCase1 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
 
@@ -336,7 +336,7 @@ testStatusCase1 = do
 
 testStatusCase2 :: Assertion
 testStatusCase2 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
 
@@ -345,7 +345,7 @@ testStatusCase2 = do
 
 testStatusCase3 :: Assertion
 testStatusCase3 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -359,7 +359,7 @@ testStatusCase3 = do
 
 testStatusCase4 :: Assertion
 testStatusCase4 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -386,7 +386,7 @@ testStatusCase4 = do
 
 testStatusCase5 :: Assertion
 testStatusCase5 = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -403,9 +403,17 @@ testStatusCase5 = do
 
 testInit :: Assertion
 testInit = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
+
+testInitEdgeCase1 :: Assertion
+testInitEdgeCase1 = do
+    eitherInit1 <- runEitherT $ H.init (Just Quiet)
+    eitherInit2 <- runEitherT $ H.init (Just Quiet)
+
+    assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
+    assertBool "Error: command should fail" (isLeft eitherInit2)
 
 testNoRepo :: EitherT Error IO a -> Assertion
 testNoRepo = (=<<) ((@?=) True . isLeft) . runEitherT
@@ -434,7 +442,7 @@ testNoRepoSquash = testNoRepo $ H.squash Default.def
 testCheckout :: Assertion
 testCheckout = do
 
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -533,7 +541,7 @@ testCheckout = do
 
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "a"
     D.createDirectory "a/b"
@@ -550,7 +558,7 @@ testStatusFromSubdir = do
 
 testStageFromSubdir :: Assertion
 testStageFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "a"
     createFileWithContents "a/x" "x"
@@ -568,7 +576,7 @@ testStageFromSubdir = do
 
 testCheckoutFromSubdir :: Assertion
 testCheckoutFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -676,7 +684,7 @@ testCheckoutFromSubdir = do
 
 testCommitFromSubdir :: Assertion
 testCommitFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -776,7 +784,7 @@ testCommitFromSubdir = do
 
 testShowFromSubdir :: Assertion
 testShowFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -800,7 +808,7 @@ testShowFromSubdir = do
 
 testLogFromSubdir :: Assertion
 testLogFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
         liftIO $ D.createDirectory "dir"
         liftIO $ D.setCurrentDirectory "dir"
@@ -817,7 +825,7 @@ testLogFromSubdir = do
 
 testCommitAmend :: Assertion
 testCommitAmend = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -879,7 +887,7 @@ testCommitAmend = do
 
 testCommitAmendFromSubdir :: Assertion
 testCommitAmendFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -945,7 +953,7 @@ testCommitAmendFromSubdir = do
 
 testSquash :: Assertion
 testSquash = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -1025,7 +1033,7 @@ testSquash = do
 
 testSquashFromSubdir :: Assertion
 testSquashFromSubdir = do
-    H.init (Just Quiet)
+    runEitherT $ H.init (Just Quiet)
 
     ----------------
 
@@ -1138,6 +1146,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing `horse init`"
         (runTest testInit)
+    , testCase
+        "Testing `horse init` (edge case 1)"
+        (runTest testInitEdgeCase1)
     , testCase
         "Testing `horse log`"
         (runTest testLog)

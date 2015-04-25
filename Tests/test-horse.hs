@@ -428,6 +428,9 @@ testNoRepoShow = testNoRepo $ H.show Default.def (Just Quiet)
 testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 
+testNoRepoSquash :: Assertion
+testNoRepoSquash = testNoRepo $ H.squash Default.def
+
 testCheckout :: Assertion
 testCheckout = do
 
@@ -824,6 +827,7 @@ testCommitAmend = do
     eitherFirstCommit <- runEitherT noargCommit
     assertBool (fromLeft undefined eitherFirstCommit) (isRight eitherFirstCommit)
     let firstCommit = fromRight undefined eitherFirstCommit
+
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "2"
@@ -872,9 +876,241 @@ testCommitAmend = do
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
-    where
-        assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
-        assertFieldEqual a b field = field a @?= field b
+
+testCommitAmendFromSubdir :: Assertion
+testCommitAmendFromSubdir = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    D.createDirectory "d"
+    D.setCurrentDirectory "d"
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "."
+    eitherFirstCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherFirstCommit) (isRight eitherFirstCommit)
+    let firstCommit = fromRight undefined eitherFirstCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "3"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ H.commitAmend Nothing (Just Quiet)
+
+    ----------------
+
+    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
+    let log = fromRight undefined eitherLog
+
+    length log @?= 1
+    let squashedCommit = head log
+
+    assertFieldEqual firstCommit squashedCommit author
+    assertFieldEqual firstCommit squashedCommit date
+    assertFieldEqual firstCommit squashedCommit parentHash
+
+    diffWithPrimaryParent squashedCommit @?= FD.Diff
+        { FD.filediffs =
+            [ FD.Filediff
+                { FD.base = "d/b"
+                , FD.comp = "d/b"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "d/a"
+                , FD.comp = "d/a"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"2")]
+                    }
+                }
+            ]
+        }
+
+    -- TODO: make this better
+    message squashedCommit @?= message firstCommit `mappend` "default message"
+
+    assertBool "Hashes should not be equal."
+        (hash squashedCommit /= hash firstCommit)
+
+    D.setCurrentDirectory ".."
+
+testSquash :: Assertion
+testSquash = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "."
+    eitherFirstCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherFirstCommit) (isRight eitherFirstCommit)
+    let firstCommit = fromRight undefined eitherFirstCommit
+ 
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b" >> createFileWithContents "b" "3"
+    createFileWithContents "c" "3"
+
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    ----------------
+
+    runEitherT $ H.squash (H.hashToString . hash $ firstCommit)
+
+    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
+    let log = fromRight undefined eitherLog
+
+    length log @?= 1
+    let squashedCommit = head log
+
+    assertFieldEqual firstCommit squashedCommit author
+    assertFieldEqual firstCommit squashedCommit date
+    assertFieldEqual firstCommit squashedCommit parentHash
+
+    diffWithPrimaryParent squashedCommit @?= FD.Diff
+        { FD.filediffs =
+            [ FD.Filediff
+                { FD.base = "c"
+                , FD.comp = "c"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "b"
+                , FD.comp = "b"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "a"
+                , FD.comp = "a"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            ]
+        }
+
+    -- TODO: make this better
+    message squashedCommit @?= message firstCommit `mappend` "default message" `mappend` "default message"
+
+    assertBool "Hashes should not be equal."
+        (hash squashedCommit /= hash firstCommit)
+
+testSquashFromSubdir :: Assertion
+testSquashFromSubdir = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    D.createDirectory "d"
+    D.setCurrentDirectory "d"
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "."
+    eitherFirstCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherFirstCommit) (isRight eitherFirstCommit)
+    let firstCommit = fromRight undefined eitherFirstCommit
+ 
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b" >> createFileWithContents "b" "3"
+    createFileWithContents "c" "3"
+
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    ----------------
+
+    runEitherT $ H.squash (H.hashToString . hash $ firstCommit)
+
+    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
+    let log = fromRight undefined eitherLog
+
+    length log @?= 1
+    let squashedCommit = head log
+
+    assertFieldEqual firstCommit squashedCommit author
+    assertFieldEqual firstCommit squashedCommit date
+    assertFieldEqual firstCommit squashedCommit parentHash
+
+    diffWithPrimaryParent squashedCommit @?= FD.Diff
+        { FD.filediffs =
+            [ FD.Filediff
+                { FD.base = "d/c"
+                , FD.comp = "d/c"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "d/b"
+                , FD.comp = "d/b"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "d/a"
+                , FD.comp = "d/a"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            ]
+        }
+
+    -- TODO: make this better
+    message squashedCommit @?= message firstCommit `mappend` "default message" `mappend` "default message"
+
+    assertBool "Hashes should not be equal."
+        (hash squashedCommit /= hash firstCommit)
+
+    D.setCurrentDirectory ".."
+
+assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
+assertFieldEqual a b field = field a @?= field b
+
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -896,6 +1132,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `log` run without a repo"
         (runTest testNoRepoLog)
+    , testCase
+        "Testing command `squash` run without a repo"
+        (runTest testNoRepoSquash)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -985,6 +1224,15 @@ tests = testGroup "unit tests"
     , testCase
         "Testing executing command `commit --amend`"
         (runTest testCommitAmend)
+    , testCase
+        "Testing executing command `commit --amend` from a subdirectory"
+        (runTest testCommitAmendFromSubdir)
+    , testCase
+        "Testing executing command `squash`"
+        (runTest testSquash)
+    , testCase
+        "Testing executing command `squash` from a subdirectory"
+        (runTest testSquashFromSubdir)
     ]
 
 main :: IO ()

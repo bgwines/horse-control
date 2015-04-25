@@ -2,12 +2,11 @@
 * checkout -> "load" ?
 * input validation
 * stage, then mod without committing (remember to update docs for loadUnstagedFiles)
-* cherry-pick
 * branches
-* merging
-* "current" branch
+    * cherry-pick
+    * merging
+    * "current" branch
 * unstaging
 * PURIFY CODE
 * -q -v
-* --amend Main.hs
 * writerT

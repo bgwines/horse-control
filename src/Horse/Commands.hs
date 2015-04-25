@@ -236,12 +236,18 @@ stage path = do
 --   then clears the staging area.
 commitAmend :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
 commitAmend maybeMessage maybeVerbosity = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
     canAmend <- commitsHaveBeenMade
     unless canAmend $
         left "Error: cannot amend when no commits have been made."
 
     latestCommit <- commit maybeMessage maybeVerbosity
-    squash (hashToString . fromJust . parentHash $ latestCommit)
+    squashedCommit <- squash (hashToString . fromJust . parentHash $ latestCommit)
+
+    liftIO $ D.setCurrentDirectory userDirectory
+    right squashedCommit
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
@@ -314,6 +320,9 @@ hashCommit
 -- | Inclusive in param
 squash :: String -> EitherT Error IO Commit
 squash ref = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
     endHash <- refToHash ref
     historyToRoot <- log Nothing Nothing (Just Quiet)
     let history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
@@ -335,6 +344,8 @@ squash ref = do
     liftIO $ do
         HIO.writeCommit squashedCommit
         HIO.writeHeadHash (hash squashedCommit)
+        D.setCurrentDirectory userDirectory
+
     right squashedCommit
 
 -- | Sets the contents of the filesystem to the state it had in the

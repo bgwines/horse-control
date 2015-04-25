@@ -24,21 +24,23 @@ data Command
     | Config (Maybe String) (Maybe Types.EmailAddress)
     | Status (Maybe Types.Verbosity)
     | Stage String
-    | Commit (Maybe String) (Maybe Types.Verbosity)
+    | Commit (Maybe String) Bool (Maybe Types.Verbosity)
     | Checkout String (Maybe Types.Verbosity)
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
+    | Squash String
     deriving (Show)
 
-optQuiet = (optional $ option auto
-        ( long "quiet"
-        <> short 'q'
+verbosityOption :: Parser (Maybe Types.Verbosity)
+verbosityOption = (optional $ option auto
+        ( long "verbosity"
+        <> short 'v'
         <> metavar "VERBOSITY"
         <> help "How much logging to print during execution of the command" )
     )
 
 parseInit :: Parser Command
-parseInit = Init <$> optQuiet
+parseInit = Init <$> verbosityOption
 
 parseConfig :: Parser Command
 parseConfig = Config
@@ -54,7 +56,7 @@ parseConfig = Config
         )
 
 parseStatus :: Parser Command
-parseStatus = Status <$> optQuiet
+parseStatus = Status <$> verbosityOption
 
 parseStage :: Parser Command
 parseStage = Stage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
@@ -65,12 +67,13 @@ parseCommit = Commit
             ( short 'm'
             <> metavar "COMMIT-MESSAGE" )
         )
-    <*> optQuiet
+    <*> switch (long "amend" <> help "Whether to amend the latest commit (HEAD)" )
+    <*> verbosityOption
 
 parseCheckout :: Parser Command
 parseCheckout = Checkout
     <$> (argument str $ metavar "REF")
-    <*> optQuiet
+    <*> verbosityOption
 
 parseShow :: Parser Command
 parseShow = Show <$> (optional $ strOption (metavar "REF"))
@@ -87,14 +90,18 @@ parseLog = Log
             <> metavar "HISTORY-LENGTH"
             <> help "Number of commits to display in history." )
         )
-    <*> optQuiet
+    <*> verbosityOption
 
 parseVersion :: Parser Command
 parseVersion = pure Version
 
+parseSquash :: Parser Command
+parseSquash = Squash <$> (argument str $ metavar "REF")
+
 parseCommand :: Parser Command
 parseCommand = subparser
-    $  command "init"     (parseInit     `withInfo` initHelpMessage)
+    $  command "version"  (parseVersion  `withInfo` versionHelpMessage)
+    <> command "init"     (parseInit     `withInfo` initHelpMessage)
     <> command "config"   (parseConfig   `withInfo` configHelpMessage)
     <> command "status"   (parseStatus   `withInfo` statusHelpMessage)
     <> command "stage"    (parseStage    `withInfo` stageHelpMessage)
@@ -102,8 +109,8 @@ parseCommand = subparser
     <> command "checkout" (parseCheckout `withInfo` checkoutHelpMessage)
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
     <> command "log"      (parseLog      `withInfo` logHelpMessage)
-    <> command "version"  (parseVersion  `withInfo` "Show version")
-    where
+    <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
+        where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
 
@@ -128,6 +135,12 @@ parseCommand = subparser
         logHelpMessage :: String
         logHelpMessage = "Print the commit history"
 
+        versionHelpMessage :: String
+        versionHelpMessage = "Show version"
+
+        squashHelpMessage :: String
+        squashHelpMessage = "Squash commits up to specified ref (non-inclusive)"
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
@@ -142,7 +155,9 @@ run cmd = do
         Stage path         -> runEitherT $ void $ Commands.stage path
         Log ref n v        -> runEitherT $ void $ Commands.log ref n v
         Status v           -> runEitherT $ void $ Commands.status v
-        Commit msg v       -> runEitherT $ void $ Commands.commit msg v
+        Commit msg False v -> runEitherT $ void $ Commands.commit msg v
+        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend msg v
+        Squash ref         -> runEitherT $ void $ Commands.squash ref
     if isLeft eitherSuccess
         then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()

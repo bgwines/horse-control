@@ -11,9 +11,11 @@ module Horse.Commands
 , Horse.Commands.status
 , Horse.Commands.stage
 , Horse.Commands.commit
+, Horse.Commands.commitAmend
 , Horse.Commands.checkout
 , Horse.Commands.show
 , Horse.Commands.log
+, Horse.Commands.squash
 ) where
 
 -- imports
@@ -31,6 +33,8 @@ import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 
 -- qualified imports
+
+import qualified Zora.List as ZL (take_while_keep_last)
 
 import qualified Filediff as FD
 import qualified Filediff.Stats as FD
@@ -70,6 +74,7 @@ import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 import Horse.Types
 import Horse.Utils
     ( stringToHash
+    , hashToString
     , (|<$>|)
     , print'
     , putStrLn'
@@ -229,6 +234,17 @@ stage path = do
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
+commitAmend :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
+commitAmend maybeMessage maybeVerbosity = do
+    canAmend <- commitsHaveBeenMade
+    unless canAmend $
+        left "Error: cannot amend when no commits have been made."
+
+    latestCommit <- commit maybeMessage maybeVerbosity
+    squash (hashToString . fromJust . parentHash $ latestCommit)
+
+-- | Writes the changes housed in the staging area as a commit to disk,
+--   then clears the staging area.
 commit :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
 commit maybeMessage maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
@@ -286,14 +302,40 @@ commit maybeMessage maybeVerbosity = do
             ++ Prelude.show numDels ++ " deletions(-)"
 
     right completeCommit
-    where
-        -- TODO: where does this go?
-        hashCommit :: Commit -> Hash
-        hashCommit
-            = ByteString.take 40
-            . Hex.hex
-            . SHA256.hash
-            . Serialize.encode
+
+-- TODO: where does this go?
+hashCommit :: Commit -> Hash
+hashCommit
+    = ByteString.take 40
+    . Hex.hex
+    . SHA256.hash
+    . Serialize.encode
+
+-- | Inclusive in param
+squash :: String -> EitherT Error IO Commit
+squash ref = do
+    endHash <- refToHash ref
+    historyToRoot <- log Nothing Nothing (Just Quiet)
+    let history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
+
+    let squashedAuthor = author . last $ history
+    let squashedDate = date . last $ history
+    let squashedParentHash = parentHash . last $ history
+    let squashedDiff = mconcat . map diffWithPrimaryParent . reverse $ history
+    let squashedMessage = mconcat . map message $ history
+    let unhashedCommit = Commit {
+        author                  = squashedAuthor
+        , date                  = squashedDate
+        , hash                  = Default.def
+        , parentHash            = squashedParentHash
+        , diffWithPrimaryParent = squashedDiff
+        , message               = squashedMessage }
+    let squashedCommit = unhashedCommit { hash = hashCommit unhashedCommit }
+
+    liftIO $ do
+        HIO.writeCommit squashedCommit
+        HIO.writeHeadHash (hash squashedCommit)
+    right squashedCommit
 
 -- | Sets the contents of the filesystem to the state it had in the
 --   specified commit.

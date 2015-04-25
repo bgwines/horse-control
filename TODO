@@ -1,6 +1,13 @@
 * refs -- prefixes, branches, tags, etc...
-* aliases
 * checkout -> "load" ?
 * input validation
-* diff stats
 * stage, then mod without committing (remember to update docs for loadUnstagedFiles)
+* cherry-pick
+* branches
+* merging
+* "current" branch
+* unstaging
+* PURIFY CODE
+* -q -v
+* --amend Main.hs
+* writerT

@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Main (main) where
@@ -7,6 +8,7 @@ module Main (main) where
 import Test.Tasty
 import Test.Tasty.HUnit
 
+import Data.Monoid
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO)
 
@@ -49,6 +51,10 @@ import qualified Horse.Utils as H
 import qualified Horse.Commands as H
 import qualified Horse.Constants as H
 
+import qualified Filediff as FD
+import qualified Filediff.Types as FD
+import qualified Filediff.Sequence as FD
+
 -- | Runs a test in its own empty directory.
 -- | Effectively, it isolates it from all other tests.
 runTest :: Assertion -> Assertion
@@ -81,7 +87,10 @@ createFileWithContents filepath contents = do
     IO.hClose handle
 
 quietCommit :: Maybe String -> EitherT Error IO Commit
-quietCommit = (flip H.commit $ Just Quiet)
+quietCommit m = H.commit m (Just Quiet)
+
+noargCommit :: EitherT Error IO Commit
+noargCommit = H.commit Nothing (Just Quiet)
 
 testLog :: Assertion
 testLog = do
@@ -159,7 +168,7 @@ testStageDirectory = do
     createFileWithContents "dir/sd/a" "a"
 
     runEitherT $ H.stage "dir/sd/a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     createFileWithContents "dir/sd/b" "b"
     createFileWithContents "dir/sd/c" "c"
@@ -182,7 +191,7 @@ testStageDirectoryEdgeCase1 = do
     createFileWithContents "dir/sd/a" "a"
 
     runEitherT $ H.stage "dir/sd/a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     createFileWithContents "dir/sd/b" "b"
     createFileWithContents "dir/sd/c" "c"
@@ -208,7 +217,7 @@ testStageDirectoryEdgeCase2 = do
     createFileWithContents "dir/sd/a" "a"
 
     runEitherT $ H.stage "dir/sd/a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     createFileWithContents "dir/sd/b" "b"
     createFileWithContents "dir/sd/c" "c"
@@ -234,7 +243,7 @@ testStageDirectoryEdgeCase3 = do
     createFileWithContents "dir/sd/a" "a"
 
     runEitherT $ H.stage "dir/sd/a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     createFileWithContents "dir/sd/b" "b"
     createFileWithContents "dir/sd/c" "c"
@@ -355,7 +364,7 @@ testStatusCase4 = do
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
 
-    runEitherT $ quietCommit (Just "added \"a\"")
+    runEitherT noargCommit
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     assertBool "`status` command should not fail" (isRight eitherStatus)
@@ -364,7 +373,7 @@ testStatusCase4 = do
 
     createFileWithContents "b" "b"
     runEitherT $ H.stage "b"
-    runEitherT $ quietCommit (Just "added \"b\"")
+    runEitherT noargCommit
 
     appendFile "a" "aaaa"
 
@@ -381,7 +390,7 @@ testStatusCase5 = do
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     appendFile "a" "bcd"
     runEitherT $ H.stage "a"
@@ -411,7 +420,7 @@ testNoRepoCheckout :: Assertion
 testNoRepoCheckout = testNoRepo $ H.checkout Default.def (Just Quiet)
 
 testNoRepoCommit :: Assertion
-testNoRepoCommit = testNoRepo $ quietCommit Default.def
+testNoRepoCommit = testNoRepo $ noargCommit
 
 testNoRepoShow :: Assertion
 testNoRepoShow = testNoRepo $ H.show Default.def (Just Quiet)
@@ -429,7 +438,7 @@ testCheckout = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -438,7 +447,7 @@ testCheckout = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -447,7 +456,7 @@ testCheckout = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -564,7 +573,7 @@ testCheckoutFromSubdir = do
     createFileWithContents "dir/a" "1"
 
     runEitherT $ H.stage "dir/a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -573,7 +582,7 @@ testCheckoutFromSubdir = do
 
     runEitherT $ H.stage "dir/a"
     runEitherT $ H.stage "dir/b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -582,7 +591,7 @@ testCheckoutFromSubdir = do
 
     runEitherT $ H.stage "dir/a"
     runEitherT $ H.stage "dir/b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -673,7 +682,7 @@ testCommitFromSubdir = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "2"
@@ -681,7 +690,7 @@ testCommitFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "3"
@@ -689,7 +698,7 @@ testCommitFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ quietCommit Nothing
+    runEitherT noargCommit
 
     ----------------
 
@@ -773,7 +782,7 @@ testShowFromSubdir = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
-    eitherCommit <- runEitherT $ quietCommit Nothing
+    eitherCommit <- runEitherT noargCommit
 
     assertBool "`commit` should not fail." $ isRight eitherCommit
     let commit = fromRight undefined eitherCommit
@@ -802,6 +811,70 @@ testLogFromSubdir = do
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
+
+testCommitAmend :: Assertion
+testCommitAmend = do
+    H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherFirstCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherFirstCommit) (isRight eitherFirstCommit)
+    let firstCommit = fromRight undefined eitherFirstCommit
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "3"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT $ H.commitAmend Nothing (Just Quiet)
+
+    ----------------
+
+    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
+    let log = fromRight undefined eitherLog
+
+    length log @?= 1
+    let squashedCommit = head log
+
+    assertFieldEqual firstCommit squashedCommit author
+    assertFieldEqual firstCommit squashedCommit date
+    assertFieldEqual firstCommit squashedCommit parentHash
+
+    diffWithPrimaryParent squashedCommit @?= FD.Diff
+        { FD.filediffs =
+            [ FD.Filediff
+                { FD.base = "b"
+                , FD.comp = "b"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"3")]
+                    }
+                }
+            , FD.Filediff
+                { FD.base = "a"
+                , FD.comp = "a"
+                , FD.change = FD.Add $ FD.SeqDiff
+                    { FD.dels = []
+                    , FD.adds = [(0,"2")]
+                    }
+                }
+            ]
+        }
+
+    -- TODO: make this better
+    message squashedCommit @?= message firstCommit `mappend` "default message"
+
+    assertBool "Hashes should not be equal."
+        (hash squashedCommit /= hash firstCommit)
+    where
+        assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
+        assertFieldEqual a b field = field a @?= field b
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -909,6 +982,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing executing command `log` from subdirectory"
         (runTest testLogFromSubdir)
+    , testCase
+        "Testing executing command `commit --amend`"
+        (runTest testCommitAmend)
     ]
 
 main :: IO ()

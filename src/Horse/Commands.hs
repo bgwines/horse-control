@@ -426,13 +426,22 @@ log maybeRef maybeNumCommits maybeVerbosity = do
             history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
 
             unless (verbosity == Quiet) $ do
-                print' $ hash <$> history
+                liftIO $ mapM_ printCommit history
             right history
         else right []
 
     liftIO $ D.setCurrentDirectory userDirectory
 
     right history
+    where
+        printCommit :: Commit -> IO ()
+        printCommit (Commit author date hash _ diff message) = do
+            putStrLn $ "* " ++ shortHash ++ " - " ++ (Prelude.show date)
+            putStrLn $ "|        " ++ message
+            putStrLn $ "|  - " ++ (Prelude.show author)
+            where
+                shortHash :: String
+                shortHash = take 7 $ hashToString hash
 
 -- * helper functions (not exposed)
 

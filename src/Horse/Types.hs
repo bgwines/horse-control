@@ -83,9 +83,14 @@ type Date = (Integer, Int, Int)
 data UserInfo = UserInfo {
     name :: String,
     email :: String
-} deriving (Eq, Show, Generic)
+} deriving (Eq, Generic)
 
 instance Serialize UserInfo
+
+instance Show UserInfo where
+    show :: UserInfo -> String
+    show (UserInfo userName userEmail) =
+        userName ++ " (" ++ userEmail ++ ")" 
 
 -- | A commit record.
 data Commit = Commit {

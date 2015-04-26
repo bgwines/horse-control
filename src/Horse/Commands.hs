@@ -10,12 +10,13 @@ module Horse.Commands
 , Horse.Commands.init
 , Horse.Commands.status
 , Horse.Commands.stage
+, Horse.Commands.unstage
 , Horse.Commands.commit
 , Horse.Commands.commitAmend
+, Horse.Commands.squash
 , Horse.Commands.checkout
 , Horse.Commands.show
 , Horse.Commands.log
-, Horse.Commands.squash
 ) where
 
 -- imports
@@ -180,6 +181,29 @@ status maybeVerbosity = do
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
+unstage :: String -> EitherT Error IO StagingArea
+unstage path = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
+    -- tail for prefixing '/' coming from `dropPrefix`
+    -- relative to root of repo
+    relativePath <- HF.relativizePath path userDirectory
+    when (isPrefixOf ".." relativePath) $ do
+        left $ "Can't stage file or directory outside of the repository: " ++ path
+    relativePaths <- getRelativePaths relativePath
+    -- TODO: share the above code
+
+    let unstageFiles = mapStagingArea (flip (\\) $ relativePaths)
+    stagingArea <- unstageFiles <$> HIO.loadStagingArea
+    liftIO $ HIO.writeStagingArea stagingArea
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    right stagingArea
+
+-- | Adds the whatever change was made (modification or addition or
+--   deletion) to the specified file or directory to the staging area.
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
     -- can't yet tell which files were ever committed, so we can't
@@ -194,40 +218,23 @@ stage path = do
 
     -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
-    relativePath <- liftIO $ HF.relativizePath path userDirectory
+    relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
         left $ "Can't stage file or directory outside of the repository: " ++ path
     relativePaths <- getRelativePaths relativePath
 
     diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
+    let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
 
     stagingArea <- HIO.loadStagingArea
-
-    let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
     let updatedStagingArea = foldl (flip ($)) stagingArea updateFunctions
 
     liftIO $ do
-        HIO.writeStagingArea (dedupe updatedStagingArea)
+        HIO.writeStagingArea (mapStagingArea nub updatedStagingArea)
         D.setCurrentDirectory userDirectory
 
     right updatedStagingArea
     where
-        dedupe :: StagingArea -> StagingArea
-        dedupe (StagingArea adds mods dels) =
-            StagingArea (nub adds) (nub mods) (nub dels)
-
-        getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
-        getRelativePaths relativePath = do
-            isDir <- liftIO $ D.doesDirectoryExist relativePath
-
-            unfiltered <- if isDir
-                then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
-                else right [relativePath]
-
-            let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
-
-            right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
-
         updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
         updateStagingArea (FD.Filediff base _ change) stagingArea =
             case change of {
@@ -270,6 +277,11 @@ commit maybeMessage maybeVerbosity = do
         then right Nothing
         else HIO.loadHeadHash >>= (fmap Just . HIO.loadCommit)
 
+    stagingArea <- HIO.loadStagingArea
+    when (isEmpty stagingArea) $
+        left "Error: can't commit with an empty staging area."
+
+    -- behavior of `stage` ensures that this will never be `mempty`
     stagedDiff <- HIO.loadStagingArea >>= diffWithHEAD . Just . files
 
     config <- HIO.loadConfig
@@ -370,7 +382,10 @@ checkout ref maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    refToHash ref >>= checkoutToDirectory "."
+    hash <- refToHash ref
+    checkoutToDirectory "." hash
+
+    liftIO $ HIO.writeHeadHash hash
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -423,13 +438,25 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
 -- * assorted
 
+getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
+getRelativePaths relativePath = do
+    isDir <- liftIO $ D.doesDirectoryExist relativePath
+
+    unfiltered <- if isDir
+        then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
+        else right [relativePath]
+
+    let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
+
+    right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
+
 assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
 assertIsRepositoryAndCdToRoot = do
     userDirectory <- liftIO D.getCurrentDirectory
     isRepository <- liftIO $ HF.isRepositoryOrAncestorIsRepo userDirectory
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
-    liftIO $ HF.repoRoot >>= D.setCurrentDirectory
+    HF.repoRoot >>= liftIO . D.setCurrentDirectory
 
 -- | Identifies whether any commits have been made in the current
 --   repository.

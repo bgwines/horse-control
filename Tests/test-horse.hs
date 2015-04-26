@@ -106,8 +106,23 @@ testLog :: Assertion
 testLog = do
     runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
-        let messages = map Just ["A", "B", "C", "D"]
-        commits <- mapM quietCommit messages
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+
+        let commits = [commitA, commitB, commitC, commitD]
 
         history <- reverse <$> H.log Nothing Nothing (Just Quiet)
         liftIO $ commits @?= history
@@ -131,8 +146,23 @@ testLogEdgeCase2 :: Assertion
 testLogEdgeCase2 = do
     runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
-        let messages = map Just ["A", "B", "C", "D"]
-        commits <- mapM quietCommit messages
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+
+        let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ commits !! 2
         history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
@@ -145,8 +175,23 @@ testLogEdgeCase3 :: Assertion
 testLogEdgeCase3 = do
     runEitherT $ H.init (Just Quiet)
     eitherSuccess <- runEitherT $ do
-        let messages = map Just ["A", "B", "C", "D"]
-        commits <- mapM quietCommit messages
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+
+        let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ head commits
         history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
@@ -441,6 +486,29 @@ testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 testNoRepoSquash :: Assertion
 testNoRepoSquash = testNoRepo $ H.squash Default.def
 
+testNoRepoUnstage :: Assertion
+testNoRepoUnstage = testNoRepo $ H.unstage Default.def
+
+testCheckoutChangesHEAD :: Assertion
+testCheckoutChangesHEAD = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherFirstCommit <- runEitherT noargCommit
+
+    createFileWithContents "b" "2"
+    runEitherT $ H.stage "b"
+    eitherSecondCommit <- runEitherT noargCommit
+
+    history1 <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    length <$> history1 @?= Right 2
+
+    let firstHash = hash $ fromRight undefined eitherFirstCommit
+    runEitherT $ H.checkout (H.hashToString firstHash) (Just Quiet)
+    history2 <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    length <$> history2 @?= Right 1
+
 testCheckout :: Assertion
 testCheckout = do
 
@@ -451,7 +519,8 @@ testCheckout = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
-    runEitherT noargCommit
+    eitherCommit1 <- runEitherT noargCommit
+    let first = hash $ fromRight undefined eitherCommit1
 
     ----------------
 
@@ -460,7 +529,8 @@ testCheckout = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT noargCommit
+    eitherCommit2 <- runEitherT noargCommit
+    let second = hash $ fromRight undefined eitherCommit2
 
     ----------------
 
@@ -469,45 +539,25 @@ testCheckout = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT noargCommit
+    eitherCommit3 <- runEitherT noargCommit
+    let third = hash $ fromRight undefined eitherCommit3
 
     ----------------
 
     -- try multiple combinations of gaps and orders and such
-    test1
-    test2
-    test3
-    test2
-    test1
-    test3
-    test1
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
 
     return ()
     where   
-        first :: IO Hash
-        first
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . last)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-        
-        second :: IO Hash
-        second
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head . tail)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        third :: IO Hash
-        third
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        test1 :: Assertion
-        test1 = do
-            first >>= (quietCheckout) . H.hashToString
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "1"
@@ -516,9 +566,9 @@ testCheckout = do
             (not bExists) @? "`b` should not exist."
             return ()
 
-        test2 :: Assertion
-        test2 = do
-            second >>= (quietCheckout) . H.hashToString
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "2"
@@ -527,9 +577,9 @@ testCheckout = do
             aContents @?= "2"
             return ()
 
-        test3 :: Assertion
-        test3 = do
-            third >>= (quietCheckout) . H.hashToString
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "3"
@@ -538,8 +588,8 @@ testCheckout = do
             (not bExists) @? "`b` should not exist."
             return ()
 
-        quietCheckout :: String -> IO ()
-        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+quietCheckout :: String -> IO ()
+quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
 
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
@@ -583,106 +633,81 @@ testCheckoutFromSubdir = do
     ----------------
 
     D.createDirectory "dir"
-    createFileWithContents "dir/a" "1"
+    D.setCurrentDirectory "dir"
 
-    runEitherT $ H.stage "dir/a"
-    runEitherT noargCommit
+    createFileWithContents "a" "1"
 
-    ----------------
-
-    D.removeFile "dir/a" >> createFileWithContents "dir/a" "2"
-    createFileWithContents "dir/b" "2"
-
-    runEitherT $ H.stage "dir/a"
-    runEitherT $ H.stage "dir/b"
-    runEitherT noargCommit
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight undefined eitherCommit1
 
     ----------------
 
-    D.removeFile "dir/a" >> createFileWithContents "dir/a" "3"
-    D.removeFile "dir/b"
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
 
-    runEitherT $ H.stage "dir/a"
-    runEitherT $ H.stage "dir/b"
-    runEitherT noargCommit
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight undefined eitherCommit3
 
     ----------------
 
     -- try multiple combinations of gaps and orders and such
-    test1
-    test2
-    test3
-    test2
-    test1
-    test3
-    test1
+    test1 hash1
+    test2 hash2
+    test3 hash3
+    test2 hash2
+    test1 hash1
+    test3 hash3
+    test1 hash1
+
+    D.setCurrentDirectory ".."
 
     return ()
     where   
-        first :: IO Hash
-        first
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . last)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-        
-        second :: IO Hash
-        second
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head . tail)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        third :: IO Hash
-        third
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        test1 :: Assertion
-        test1 = do
-            D.setCurrentDirectory "dir"
-            first >>= (quietCheckout) . H.hashToString
-
-            c <- D.getDirectoryContents "."
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "1"
 
             bExists <- D.doesFileExist "b"
             (not bExists) @? "`b` should not exist."
+            return ()
 
-            D.setCurrentDirectory ".."
-
-        test2 :: Assertion
-        test2 = do
-            D.setCurrentDirectory "dir"
-            second >>= (quietCheckout) . H.hashToString
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "2"
 
             aContents <- readFile "b"
             aContents @?= "2"
+            return ()
 
-            D.setCurrentDirectory ".."
-
-        test3 :: Assertion
-        test3 = do
-            D.setCurrentDirectory "dir"
-            third >>= (quietCheckout) . H.hashToString
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "3"
 
             bExists <- D.doesFileExist "b"
             (not bExists) @? "`b` should not exist."
-
-            D.setCurrentDirectory ".."
-
-        quietCheckout :: String -> IO ()
-        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+            return ()
 
 testCommitFromSubdir :: Assertion
 testCommitFromSubdir = do
@@ -695,7 +720,8 @@ testCommitFromSubdir = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
-    runEitherT noargCommit
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight undefined eitherCommit1
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "2"
@@ -703,7 +729,8 @@ testCommitFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT noargCommit
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "3"
@@ -711,47 +738,27 @@ testCommitFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT noargCommit
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight undefined eitherCommit3
 
     ----------------
 
     -- try multiple combinations of gaps and orders and such
-    test1
-    test2
-    test3
-    test2
-    test1
-    test3
-    test1
+    test1 hash1
+    test2 hash2
+    test3 hash3
+    test2 hash2
+    test1 hash1
+    test3 hash3
+    test1 hash1
 
     D.setCurrentDirectory ".."
 
     return ()
     where   
-        first :: IO Hash
-        first
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . last)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-        
-        second :: IO Hash
-        second
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head . tail)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        third :: IO Hash
-        third
-            = fromRight undefined
-            <$> (runEitherT
-                        $ (hash . head)
-                            <$> (H.log Nothing Nothing (Just Quiet)))
-
-        test1 :: Assertion
-        test1 = do
-            first >>= (quietCheckout) . H.hashToString
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            quietCheckout . H.hashToString $ hash
 
             c <- D.getDirectoryContents "."
 
@@ -761,9 +768,9 @@ testCommitFromSubdir = do
             bExists <- D.doesFileExist "b"
             (not bExists) @? "`b` should not exist."
 
-        test2 :: Assertion
-        test2 = do
-            second >>= (quietCheckout) . H.hashToString
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "2"
@@ -771,9 +778,9 @@ testCommitFromSubdir = do
             aContents <- readFile "b"
             aContents @?= "2"
 
-        test3 :: Assertion
-        test3 = do
-            third >>= (quietCheckout) . H.hashToString
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
 
             aContents <- readFile "a"
             aContents @?= "3"
@@ -815,8 +822,23 @@ testLogFromSubdir = do
         liftIO $ D.createDirectory "dir"
         liftIO $ D.setCurrentDirectory "dir"
 
-        let messages = map Just ["A", "B", "C", "D"]
-        commits <- mapM quietCommit messages
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+
+        let commits = [commitA, commitB, commitC, commitD]
 
         history <- reverse <$> H.log Nothing Nothing (Just Quiet)
         liftIO $ commits @?= history
@@ -1147,6 +1169,100 @@ testStageSameFileTwiceWithChanges = do
 
     return ()
 
+testUnstage :: Assertion
+testUnstage = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.unstage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea [] [] []) ["a"]
+
+testUnstageUnstagedFile :: Assertion
+testUnstageUnstagedFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.unstage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea [] [] []) []
+
+testUnstageNonexistentPath :: Assertion
+testUnstageNonexistentPath = do
+    runEitherT $ H.init (Just Quiet)
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.unstage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea [] [] []) []
+
+testUnstageFromSubdir :: Assertion
+testUnstageFromSubdir = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "d"
+    D.setCurrentDirectory "d"
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.unstage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea [] [] []) ["d/a"]
+
+    D.setCurrentDirectory ".."
+
+testUnstageDirectory :: Assertion
+testUnstageDirectory = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "d"
+
+    createFileWithContents "d/a" "1"
+    createFileWithContents "d/b" "1"
+
+    runEitherT $ H.stage "d"
+    runEitherT $ H.unstage "d"
+
+    status <- getStatus
+    status @?= Status (StagingArea [] [] []) ["d/a", "d/b"]
+
+testCommitNoStagedFiles :: Assertion
+testCommitNoStagedFiles = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+
+    eitherCommit <- runEitherT noargCommit
+
+    assertBool "Error: shouldn't be able to commit with empty staging area." (isLeft eitherCommit)
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= (Right $ Status (StagingArea [] [] []) ["a"])
+
+testStageFileWithNoChanges :: Assertion
+testStageFileWithNoChanges = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
+
+    eitherStagingArea <- runEitherT $ H.stage "a"
+    eitherStagingArea @?= (Right $ StagingArea [] [] [])
+
+    --eitherStatus <- runEitherT $ H.status (Just Quiet)
+    --eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
+
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -1239,7 +1355,7 @@ tests = testGroup "unit tests"
         "Testing command `status` (case 5)"
         (runTest testStatusCase5)
     , testCase
-        "Testing diffs being stored in commits"
+        "Testing command `checkout`"
         (runTest testCheckout)
     , testCase
         "Testing executing command `status` from subdirectory"
@@ -1260,6 +1376,9 @@ tests = testGroup "unit tests"
         "Testing executing command `log` from subdirectory"
         (runTest testLogFromSubdir)
     , testCase
+        "Testing executing command `unstage` from a subdirectory"
+        (runTest testUnstageFromSubdir)
+    , testCase
         "Testing executing command `commit --amend`"
         (runTest testCommitAmend)
     , testCase
@@ -1277,6 +1396,27 @@ tests = testGroup "unit tests"
     , testCase
         "Testing staging same file twice with changes in between"
         (runTest testStageSameFileTwiceWithChanges)
+    , testCase
+        "Testing command `unstage`"
+        (runTest testUnstage)
+    , testCase
+        "Testing command `unstage` (edge case 1)"
+        (runTest testUnstageNonexistentPath)
+    , testCase
+        "Testing command `unstage` (edge case 2)"
+        (runTest testUnstageUnstagedFile)
+    , testCase
+        "Testing command `unstage` when given a directory"
+        (runTest testUnstageDirectory)
+    , testCase
+        "Testing committing with no staged files"
+        (runTest testCommitNoStagedFiles)
+    , testCase
+        "Testing staging a file with no changes"
+        (runTest testStageFileWithNoChanges)
+    , testCase
+        "Testing command `checkout` changes HEAD"
+        (runTest testCheckoutChangesHEAD)
     ]
 
 main :: IO ()

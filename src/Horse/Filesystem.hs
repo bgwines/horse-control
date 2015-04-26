@@ -13,6 +13,8 @@ module Horse.Filesystem
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
+import Control.Monad.Trans.Either
 
 import Data.List ((\\))
 
@@ -25,6 +27,7 @@ import qualified System.Directory as D
 
 import qualified Data.ByteString as ByteString
 
+import Horse.Types
 import Horse.Utils
     ( (</>)
     , iterateMaybe
@@ -114,15 +117,21 @@ dropPrefix (a:as) (b:bs)
 --   the user's directory (to which the first parameter should be
 --   relative), returns the first parameter made relative to the root
 --   of the repo (the second parameter).
-relativizePath :: FilePath -> FilePath -> IO FilePath
+relativizePath :: FilePath -> FilePath -> EitherT Error IO FilePath
 relativizePath path userDirectory = do
     root <- repoRoot
-    return . collapse . tail $ (dropPrefix root userDirectory) </> path
+    right . collapse . tail $ (dropPrefix root userDirectory) </> path
 
-repoRoot :: IO FilePath
+-- | If the current directory is a repo or a subdirectory of one,
+--   gets the ancestor that is a repo. If none are, returns an error
+--   state.
+repoRoot :: EitherT Error IO FilePath
 repoRoot = do
-    ancestors <- D.getCurrentDirectory >>= filesystemAncestors
-    last <$> takeWhileM isRepositoryOrAncestorIsRepo ancestors
+    ancestors <- liftIO $ D.getCurrentDirectory >>= filesystemAncestors
+    repoAncestors <- liftIO $ takeWhileM isRepositoryOrAncestorIsRepo ancestors
+    if null repoAncestors
+        then left "Error: current directory is not a repo or a decendant of one."
+        else right . last $ repoAncestors
     where
         -- | Monadic 'takeWhile'.
         takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]

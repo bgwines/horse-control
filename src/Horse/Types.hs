@@ -12,6 +12,8 @@ module Horse.Types(
 
 , StagingArea(..)
 , files
+, mapStagingArea
+, isEmpty
 
 , Config(..)
 
@@ -113,7 +115,27 @@ data StagingArea = StagingArea {
     dels :: [FilePath]
 } deriving (Eq, Show, Generic)
 
+mapStagingArea :: ([FilePath] -> [FilePath]) -> StagingArea -> StagingArea
+mapStagingArea f (StagingArea adds mods dels) =
+    StagingArea (f adds) (f mods) (f dels)
+
 instance Serialize StagingArea
+
+isEmpty :: StagingArea -> Bool
+isEmpty (StagingArea [] [] []) = True
+isEmpty _ = False 
+--instance Monoid StagingArea where
+--    mempty :: StagingArea
+--    mempty = StagingArea [] [] []
+
+--    mappend :: StagingArea -> StagingArea -> StagingArea
+--    mappend
+--        (StagingArea adds1 mods1 dels1)
+--        (StagingArea adds2 mods2 dels2)
+--        = StagingArea
+--            (adds1 `mappend` adds2)
+--            (mods1 `mappend` mods2)
+--            (dels1 `mappend` dels2)
 
 -- | Gets all files staged (be they added, modified, or deleted files).
 files :: StagingArea -> [FilePath]

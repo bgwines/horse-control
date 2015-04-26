@@ -1,7 +1,6 @@
 * refs -- prefixes, branches, tags, etc...
 * checkout -> "load" ?
 * input validation
-* stage, then mod without committing (remember to update docs for loadUnstagedFiles)
 * branches
     * cherry-pick
     * merging
@@ -9,3 +8,4 @@
 * unstaging
 * -q -v
 * writerT
+* can't initialize a repo in a subdirectory of another repo

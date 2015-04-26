@@ -1231,7 +1231,8 @@ testUnstageDirectory = do
     runEitherT $ H.unstage "d"
 
     status <- getStatus
-    status @?= Status (StagingArea [] [] []) ["d/a", "d/b"]
+    stagingArea status @?= StagingArea [] [] []
+    (sort $ unstagedFiles status) @?= (sort ["d/a", "d/b"])
 
 testCommitNoStagedFiles :: Assertion
 testCommitNoStagedFiles = do

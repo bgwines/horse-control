@@ -57,7 +57,7 @@ import qualified Database.LevelDB.Internal as DBI
 
 import qualified Filesystem.Path (FilePath, collapse)
 
-import Data.List (foldl', (\\), isInfixOf, isPrefixOf)
+import Data.List (foldl', (\\), isInfixOf, isPrefixOf, nub)
 
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
@@ -207,11 +207,15 @@ stage path = do
     let updatedStagingArea = foldl (flip ($)) stagingArea updateFunctions
 
     liftIO $ do
-        HIO.writeStagingArea updatedStagingArea
+        HIO.writeStagingArea (dedupe updatedStagingArea)
         D.setCurrentDirectory userDirectory
 
     right updatedStagingArea
     where
+        dedupe :: StagingArea -> StagingArea
+        dedupe (StagingArea adds mods dels) =
+            StagingArea (nub adds) (nub mods) (nub dels)
+
         getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
         getRelativePaths relativePath = do
             isDir <- liftIO $ D.doesDirectoryExist relativePath

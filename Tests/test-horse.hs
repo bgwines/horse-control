@@ -92,6 +92,16 @@ quietCommit m = H.commit m (Just Quiet)
 noargCommit :: EitherT Error IO Commit
 noargCommit = H.commit Nothing (Just Quiet)
 
+getStatus :: IO Status
+getStatus = do
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    assertBool "`status` should not fail" (isRight eitherStatus)
+    return $ fromRight undefined eitherStatus
+
+
+assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
+assertFieldEqual a b field = field a @?= field b
+
 testLog :: Assertion
 testLog = do
     runEitherT $ H.init (Just Quiet)
@@ -175,9 +185,7 @@ testStageDirectory = do
 
     runEitherT $ H.stage "dir/sd"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-    assertBool "`status` should not fail" (isRight eitherStatus)
-    let status = fromRight undefined eitherStatus
+    status <- getStatus
     let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
     stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
     unstagedFiles status @?= []
@@ -199,9 +207,7 @@ testStageDirectoryEdgeCase1 = do
     D.setCurrentDirectory "dir"
     runEitherT $ H.stage "sd"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-    assertBool "`status` should not fail" (isRight eitherStatus)
-    let status = fromRight undefined eitherStatus
+    status <- getStatus
     let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
     stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
     unstagedFiles status @?= []
@@ -225,9 +231,7 @@ testStageDirectoryEdgeCase2 = do
     D.setCurrentDirectory "dir"
     runEitherT $ H.stage "."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-    assertBool "`status` should not fail" (isRight eitherStatus)
-    let status = fromRight undefined eitherStatus
+    status <- getStatus
     let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
     stagedFiles @?= StagingArea (sort ["dir/sd/b", "dir/sd/c"]) [] []
     unstagedFiles status @?= []
@@ -252,9 +256,7 @@ testStageDirectoryEdgeCase3 = do
     D.setCurrentDirectory "dir"
     runEitherT $ H.stage "../x"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
-    assertBool "`status` should not fail" (isRight eitherStatus)
-    let status = fromRight undefined eitherStatus
+    status <- getStatus
     let stagedFiles = (stagingArea status) { adds = sort . adds $ stagingArea status }
     stagedFiles @?= StagingArea ["x"] [] []
     (sort $ unstagedFiles status) @?= (sort ["dir/sd/b", "dir/sd/c"])
@@ -1116,9 +1118,34 @@ testSquashFromSubdir = do
 
     D.setCurrentDirectory ".."
 
-assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
-assertFieldEqual a b field = field a @?= field b
+testStageSameFileTwiceNoChanges :: Assertion
+testStageSameFileTwiceNoChanges = do
+    runEitherT $ H.init (Just Quiet)
 
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea ["a"] [] []) []
+
+testStageSameFileTwiceWithChanges :: Assertion
+testStageSameFileTwiceWithChanges = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+
+    appendFile "a" "2"
+
+    runEitherT $ H.stage "a"
+
+    status <- getStatus
+    status @?= Status (StagingArea ["a"] [] []) []
+
+    return ()
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -1244,6 +1271,12 @@ tests = testGroup "unit tests"
     , testCase
         "Testing executing command `squash` from a subdirectory"
         (runTest testSquashFromSubdir)
+    , testCase
+        "Testing staging same file twice with no changes in between"
+        (runTest testStageSameFileTwiceNoChanges)
+    , testCase
+        "Testing staging same file twice with changes in between"
+        (runTest testStageSameFileTwiceWithChanges)
     ]
 
 main :: IO ()

@@ -425,8 +425,9 @@ log maybeRef maybeNumCommits maybeVerbosity = do
             commit <- HIO.loadCommit commitHash
             history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
 
+            headHash <- HIO.loadHeadHash
             unless (verbosity == Quiet) $ do
-                liftIO $ mapM_ printCommit history
+                liftIO $ mapM_ (\c -> printCommit c (hash c == headHash)) history
             right history
         else right []
 
@@ -434,9 +435,12 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
     right history
     where
-        printCommit :: Commit -> IO ()
-        printCommit (Commit author date hash _ diff message) = do
-            putStrLn $ "* " ++ shortHash ++ " - " ++ (Prelude.show date)
+        printCommit :: Commit -> Bool -> IO ()
+        printCommit (Commit author date hash _ diff message) isHead = do
+            let headAnnotation = if isHead
+                then " (HEAD)"
+                else ""
+            putStrLn $ "* " ++ shortHash ++ " - " ++ (Prelude.show date) ++ headAnnotation
             putStrLn $ "|        " ++ message
             putStrLn $ "|  - " ++ (Prelude.show author)
             where

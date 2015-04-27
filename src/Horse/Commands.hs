@@ -122,7 +122,7 @@ init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     whenM (liftIO $ HF.isRepositoryOrAncestorIsRepo ".") $
-        left "Error: directory is or is subdirectory of another horse-control repo"
+        left "Fatal: directory is or is subdirectory of another horse-control repo"
 
     liftIO $ do
         -- initialize config file; it's read from
@@ -251,7 +251,7 @@ commitAmend maybeMessage maybeVerbosity = do
     assertIsRepositoryAndCdToRoot
 
     unlessM commitsHaveBeenMade $
-        left "Error: cannot amend when no commits have been made."
+        left "Fatal: cannot amend when no commits have been made."
 
     latestCommit <- commit maybeMessage maybeVerbosity
     squashedCommit <- squash (hashToString . fromJust . parentHash $ latestCommit)
@@ -279,7 +279,7 @@ commit maybeMessage maybeVerbosity = do
 
     stagingArea <- HIO.loadStagingArea
     when (isEmpty stagingArea) $
-        left "Error: can't commit with an empty staging area."
+        left "Fatal: can't commit with an empty staging area."
 
     -- behavior of `stage` ensures that this will never be `mempty`
     stagedDiff <- HIO.loadStagingArea >>= diffWithHEAD . Just . files

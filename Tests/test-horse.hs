@@ -1176,10 +1176,14 @@ testUnstage = do
     createFileWithContents "a" "1"
 
     runEitherT $ H.stage "a"
+
+    firstStatus <- getStatus
+    firstStatus @?= Status (StagingArea ["a"] [] []) []
+
     runEitherT $ H.unstage "a"
 
-    status <- getStatus
-    status @?= Status (StagingArea [] [] []) ["a"]
+    secondStatus <- getStatus
+    secondStatus @?= Status (StagingArea [] [] []) ["a"]
 
 testUnstageUnstagedFile :: Assertion
 testUnstageUnstagedFile = do

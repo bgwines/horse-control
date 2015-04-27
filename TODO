@@ -5,7 +5,6 @@
     * cherry-pick
     * merging
     * "current" branch
-* unstaging
 * -q -v
 * writerT
 * can't initialize a repo in a subdirectory of another repo

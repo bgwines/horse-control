@@ -24,6 +24,7 @@ data Command
     | Config (Maybe String) (Maybe Types.EmailAddress)
     | Status (Maybe Types.Verbosity)
     | Stage String
+    | Unstage String
     | Commit (Maybe String) Bool (Maybe Types.Verbosity)
     | Checkout String (Maybe Types.Verbosity)
     | Show (Maybe String)
@@ -60,6 +61,9 @@ parseStatus = Status <$> verbosityOption
 
 parseStage :: Parser Command
 parseStage = Stage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
+
+parseUnstage :: Parser Command
+parseUnstage = Unstage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
 
 parseCommit :: Parser Command
 parseCommit = Commit
@@ -105,6 +109,7 @@ parseCommand = subparser
     <> command "config"   (parseConfig   `withInfo` configHelpMessage)
     <> command "status"   (parseStatus   `withInfo` statusHelpMessage)
     <> command "stage"    (parseStage    `withInfo` stageHelpMessage)
+    <> command "unstage"  (parseUnstage  `withInfo` unstageHelpMessage)
     <> command "commit"   (parseCommit   `withInfo` commitHelpMessage)
     <> command "checkout" (parseCheckout `withInfo` checkoutHelpMessage)
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
@@ -122,6 +127,9 @@ parseCommand = subparser
 
         stageHelpMessage :: String
         stageHelpMessage = "Stage additions, modifications, or deletions to files."
+
+        unstageHelpMessage :: String
+        unstageHelpMessage = "Stage additions, modifications, or deletions to files."
 
         commitHelpMessage :: String
         commitHelpMessage = "Write the staging area as a commit"
@@ -153,6 +161,7 @@ run cmd = do
         Checkout ref v     -> runEitherT $ Commands.checkout ref v
         Show ref           -> runEitherT $ void $ Commands.show ref Nothing
         Stage path         -> runEitherT $ void $ Commands.stage path
+        Unstage path       -> runEitherT $ void $ Commands.unstage path
         Log ref n v        -> runEitherT $ void $ Commands.log ref n v
         Status v           -> runEitherT $ void $ Commands.status v
         Commit msg False v -> runEitherT $ void $ Commands.commit msg v

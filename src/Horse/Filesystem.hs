@@ -8,7 +8,7 @@ module Horse.Filesystem
 , collapse
 , repoRoot
 , filesystemAncestors
-, isRepositoryOrAncestorIsRepo
+, isInRepository
 ) where
 
 import Control.Applicative
@@ -128,7 +128,7 @@ relativizePath path userDirectory = do
 repoRoot :: EitherT Error IO FilePath
 repoRoot = do
     ancestors <- liftIO $ D.getCurrentDirectory >>= filesystemAncestors
-    repoAncestors <- liftIO $ takeWhileM isRepositoryOrAncestorIsRepo ancestors
+    repoAncestors <- liftIO $ takeWhileM isInRepository ancestors
     if null repoAncestors
         then left "Error: current directory is not a repo or a decendant of one."
         else right . last $ repoAncestors
@@ -152,10 +152,13 @@ filesystemAncestors directory = do
         getParent curr = toMaybe (parent curr) ((/=) curr)
 
 -- | Returns whether the current directory is part of a repository.
-isRepositoryOrAncestorIsRepo :: FilePath -> IO Bool
-isRepositoryOrAncestorIsRepo filepath
-    = (filesystemAncestors filepath) >>= (fmap or . mapM isRepo)
+isInRepository :: FilePath -> IO Bool
+isInRepository filepath
+    = D.canonicalizePath filepath
+    >>= filesystemAncestors
+    >>= (fmap or . mapM isRepo)
     where
+
         -- | Returns whether the specified directory is part of a repository.
         isRepo :: FilePath -> IO Bool
         isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)

@@ -1,10 +1,10 @@
 * refs -- prefixes, branches, tags, etc...
-* checkout -> "load" ?
 * input validation
 * branches
     * cherry-pick
     * merging
     * "current" branch
+* revert
 * -q -v
 * writerT
 * can't initialize a repo in a subdirectory of another repo

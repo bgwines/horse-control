@@ -121,7 +121,7 @@ init :: Maybe Verbosity -> EitherT Error IO ()
 init maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
-    whenM (liftIO $ HF.isRepositoryOrAncestorIsRepo ".") $
+    whenM (liftIO $ HF.isInRepository ".") $
         left "Fatal: directory is or is subdirectory of another horse-control repo"
 
     liftIO $ do
@@ -466,7 +466,7 @@ getRelativePaths relativePath = do
 assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
 assertIsRepositoryAndCdToRoot = do
     userDirectory <- liftIO D.getCurrentDirectory
-    isRepository <- liftIO $ HF.isRepositoryOrAncestorIsRepo userDirectory
+    isRepository <- liftIO $ HF.isInRepository userDirectory
     unless isRepository $ do
         left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
     HF.repoRoot >>= liftIO . D.setCurrentDirectory

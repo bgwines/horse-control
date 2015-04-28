@@ -454,13 +454,25 @@ testInit = do
     rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
-testInitEdgeCase1 :: Assertion
-testInitEdgeCase1 = do
+testInitTwiceInSameDirectory :: Assertion
+testInitTwiceInSameDirectory = do
     eitherInit1 <- runEitherT $ H.init (Just Quiet)
     eitherInit2 <- runEitherT $ H.init (Just Quiet)
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
     assertBool "Error: command should fail" (isLeft eitherInit2)
+
+testInitAgainInSubdir :: Assertion
+testInitAgainInSubdir = do
+    eitherInit1 <- runEitherT $ H.init (Just Quiet)
+    D.createDirectory "x"
+    D.setCurrentDirectory "x"
+    eitherInit2 <- runEitherT $ H.init (Just Quiet)
+
+    assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
+    assertBool "Error: command should fail" (isLeft eitherInit2)
+
+    D.setCurrentDirectory ".."
 
 testNoRepo :: EitherT Error IO a -> Assertion
 testNoRepo = (=<<) ((@?=) True . isLeft) . runEitherT
@@ -1296,7 +1308,10 @@ tests = testGroup "unit tests"
         (runTest testInit)
     , testCase
         "Testing `horse init` (edge case 1)"
-        (runTest testInitEdgeCase1)
+        (runTest testInitTwiceInSameDirectory)
+    , testCase
+        "Testing `horse init` (edge case 2)"
+        (runTest testInitAgainInSubdir)
     , testCase
         "Testing `horse log`"
         (runTest testLog)

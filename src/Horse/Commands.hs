@@ -44,13 +44,10 @@ import qualified Filediff.Types as FD
 import qualified System.IO as IO
 import qualified System.Directory as D
 
-import qualified Data.Hex as Hex
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS (c2w, w2c)
-
-import qualified Crypto.Hash.SHA256 as SHA256
 
 import qualified Database.LevelDB.Base as DB
 import qualified Database.LevelDB.Internal as DBI
@@ -58,8 +55,6 @@ import qualified Database.LevelDB.Internal as DBI
 -- imported functions
 
 import qualified Filesystem.Path (FilePath, collapse)
-
-import Data.Char (toLower)
 
 import Data.List (find, foldl', (\\), isInfixOf, isPrefixOf, nub)
 
@@ -251,24 +246,25 @@ stage path = do
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
-commitAmend :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
-commitAmend maybeMessage maybeVerbosity = do
+commitAmend :: CommitHasher -> Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
+commitAmend hasher maybeMessage maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
     unlessM commitsHaveBeenMade $
         left "Fatal: cannot amend when no commits have been made."
 
-    latestCommit <- commit maybeMessage maybeVerbosity
-    squashedCommit <- squash (hashToString . fromJust . parentHash $ latestCommit)
+    latestCommit <- commit hasher maybeMessage maybeVerbosity
+    squashedCommit <- squash hasher (hashToString . fromJust . parentHash $ latestCommit)
 
     liftIO $ D.setCurrentDirectory userDirectory
     right squashedCommit
 
 -- | Writes the changes housed in the staging area as a commit to disk,
---   then clears the staging area.
-commit :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
-commit maybeMessage maybeVerbosity = do
+--   then clears the staging area. 'CommitHasher' is taken in for mocking
+--   for testing purposes.
+commit :: CommitHasher -> Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
+commit hasher maybeMessage maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
     let message = fromMaybe "default message" maybeMessage
 
@@ -301,7 +297,7 @@ commit maybeMessage maybeVerbosity = do
         , diffWithPrimaryParent = stagedDiff
         , message               = message }
 
-    let commitHash = hashCommit hashlessCommit
+    let commitHash = hashingAlg hasher $ hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
     HIO.writeCommit completeCommit
@@ -331,20 +327,9 @@ commit maybeMessage maybeVerbosity = do
 
     right completeCommit
 
--- TODO: where does this go?
-hashCommit :: Commit -> Hash
-hashCommit
-    = BS.pack
-    . map (BS.c2w . toLower . BS.w2c)
-    . BS.unpack
-    . BS.take 40
-    . Hex.hex
-    . SHA256.hash
-    . Serialize.encode
-
 -- | Inclusive in param
-squash :: String -> EitherT Error IO Commit
-squash ref = do
+squash :: CommitHasher -> String -> EitherT Error IO Commit
+squash hasher ref = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
@@ -362,7 +347,7 @@ squash ref = do
     where
         getSquashedCommit :: [Commit] -> Hash -> Commit
         getSquashedCommit historyToRoot endHash =
-            unhashedCommit { hash = hashCommit unhashedCommit }
+            unhashedCommit { hash = hashingAlg hasher $ unhashedCommit }
             where
                 history :: [Commit]
                 history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
@@ -564,13 +549,16 @@ refToHash unparsedRef = do
         isRelativeSyntax :: Char -> Bool
         isRelativeSyntax ch = ch == parentSyntax
 
-untruncateHash :: Hash -> EitherT Error IO Hash
-untruncateHash hash = do
-    when (BS.length hash < 6) $
-        left "Fatal: truncated hash too short."
-    allHashes <- HIO.loadAllHashes
-    let maybeResult = find ((==) hash . BS.take (BS.length hash)) allHashes
-    hoistEither . maybeToEither "Fatal: truncated hash does not match any stored hashes." $ maybeResult
+        untruncateHash :: Hash -> EitherT Error IO Hash
+        untruncateHash hash = do
+            when (BS.length hash < 6) $
+                left "Fatal: truncated hash too short."
+            allHashes <- HIO.loadAllHashes
+            let matching = filter ((==) hash . BS.take (BS.length hash)) allHashes
+            case length matching of
+                0 -> left "Fatal: truncated hash does not match any stored hashes"
+                1 -> right $ head matching
+                _ -> left "Fatal: multiple hashes match specified truncated hash"
 
 -- * diffing
 

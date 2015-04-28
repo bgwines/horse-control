@@ -133,10 +133,13 @@ writeCommit commit = do
 
 -- * hashes
 
+-- | Writes the specified hash to the list of hashes of every commit ever
+--   made in the repo.
 writeHash :: Hash -> EitherT Error IO ()
 writeHash hash =
     loadAllHashes >>= liftIO . writeToFile HC.hashesPath . (:) hash
 
+-- | Loads the hashes of all commits ever made in the repo.
 loadAllHashes :: EitherT Error IO [Hash]
 loadAllHashes = loadFromFile HC.hashesPath
 

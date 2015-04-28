@@ -21,6 +21,7 @@ import qualified Data.Hex as Hex
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Internal as ByteString (c2w, w2c)
 
 import qualified Crypto.Hash.SHA256 as SHA256
 
@@ -87,10 +88,10 @@ createFileWithContents filepath contents = do
     IO.hClose handle
 
 quietCommit :: Maybe String -> EitherT Error IO Commit
-quietCommit m = H.commit m (Just Quiet)
+quietCommit m = H.commit Default.def m (Just Quiet)
 
 noargCommit :: EitherT Error IO Commit
-noargCommit = H.commit Nothing (Just Quiet)
+noargCommit = H.commit Default.def Nothing (Just Quiet)
 
 getStatus :: IO Status
 getStatus = do
@@ -496,7 +497,7 @@ testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
 
 testNoRepoSquash :: Assertion
-testNoRepoSquash = testNoRepo $ H.squash Default.def
+testNoRepoSquash = testNoRepo $ H.squash Default.def Default.def
 
 testNoRepoUnstage :: Assertion
 testNoRepoUnstage = testNoRepo $ H.unstage Default.def
@@ -879,7 +880,7 @@ testCommitAmend = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commitAmend Nothing (Just Quiet)
+    runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
 
     ----------------
 
@@ -943,7 +944,7 @@ testCommitAmendFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commitAmend Nothing (Just Quiet)
+    runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
 
     ----------------
 
@@ -1019,7 +1020,7 @@ testSquash = do
 
     ----------------
 
-    runEitherT $ H.squash (H.hashToString . hash $ firstCommit)
+    runEitherT $ H.squash Default.def (H.hashToString . hash $ firstCommit)
 
     eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
@@ -1102,7 +1103,7 @@ testSquashFromSubdir = do
 
     ----------------
 
-    runEitherT $ H.squash (H.hashToString . hash $ firstCommit)
+    runEitherT $ H.squash Default.def (H.hashToString . hash $ firstCommit)
 
     eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
@@ -1386,6 +1387,35 @@ testCheckoutBadTruncatedHash2 = do
 
     assertBool "Loading bad hash should fail." (isLeft eitherCheckoutResult)
 
+-- always hashes to "aaaaaaaaa..." (40 'a's)
+mockHasher1 :: CommitHasher
+mockHasher1 = CommitHasher
+    (const $ ByteString.pack . map ByteString.c2w $ replicate 40 'a')
+
+-- always hashes to "aaaaaaaaabbbbbbbbbbb..." (9 'a's, then 31 'b's)
+mockHasher2 :: CommitHasher
+mockHasher2 = CommitHasher
+    ( const
+    $ ByteString.pack
+    $ map ByteString.c2w
+    $ (replicate 9 'a') ++ (replicate 31 'b') )
+
+testCheckoutCollidingTruncatedHashes :: Assertion
+testCheckoutCollidingTruncatedHashes = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    runEitherT $ H.commit mockHasher1 Nothing (Just Quiet)
+
+    createFileWithContents "b" "1"
+    runEitherT $ H.stage "b"
+    runEitherT $ H.commit mockHasher2 Nothing (Just Quiet)
+
+    eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') (Just Quiet)
+
+    assertBool "Committing with a colliding truncated hash should fail." (isLeft eitherCheckoutSuccess)
+
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -1550,6 +1580,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `checkout` given a bad truncated hash (case 2)"
         (runTest testCheckoutBadTruncatedHash2)
+    , testCase
+        "Testing command `checkout` given colliding truncated hashes"
+        (runTest testCheckoutCollidingTruncatedHashes)
     ]
 
 main :: IO ()

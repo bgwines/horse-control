@@ -164,9 +164,9 @@ run cmd = do
         Unstage path       -> runEitherT $ void $ Commands.unstage path
         Log ref n v        -> runEitherT $ void $ Commands.log ref n v
         Status v           -> runEitherT $ void $ Commands.status v
-        Commit msg False v -> runEitherT $ void $ Commands.commit msg v
-        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend msg v
-        Squash ref         -> runEitherT $ void $ Commands.squash ref
+        Commit msg False v -> runEitherT $ void $ Commands.commit Default.def msg v
+        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend Default.def msg v
+        Squash ref         -> runEitherT $ void $ Commands.squash Default.def ref
     if isLeft eitherSuccess
         then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()

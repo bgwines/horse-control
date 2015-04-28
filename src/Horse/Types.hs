@@ -21,6 +21,8 @@ module Horse.Types(
 
 , Verbosity(..)
 
+, CommitHasher(..)
+
 -- * Aliases
 , EmailAddress
 , Hash
@@ -35,6 +37,8 @@ import Prelude hiding (init, log)
 
 import GHC.Generics
 
+import qualified Data.Hex as Hex
+
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
@@ -42,9 +46,16 @@ import qualified Filediff as FD
 import qualified Filediff.Sequence as FD
 import qualified Filediff.Types as FD
 
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BS (c2w, w2c)
+
+import qualified Crypto.Hash.SHA256 as SHA256
+
 -- imported functions
 
-import Data.Serialize (Serialize, put, get)
+import Data.Char (toLower)
+
+import Data.Serialize (Serialize, put, get, encode)
 
 import Data.Default (Default, def)
 import Data.ByteString (ByteString, empty)
@@ -120,12 +131,15 @@ data StagingArea = StagingArea {
     dels :: [FilePath]
 } deriving (Eq, Show, Generic)
 
+-- | Maps the given function over the list of adds, the list of mods,
+--   and the list of dels.
 mapStagingArea :: ([FilePath] -> [FilePath]) -> StagingArea -> StagingArea
 mapStagingArea f (StagingArea adds mods dels) =
     StagingArea (f adds) (f mods) (f dels)
 
 instance Serialize StagingArea
 
+-- | Whether the specified staging area does not store any files.
 isEmpty :: StagingArea -> Bool
 isEmpty (StagingArea [] [] []) = True
 isEmpty _ = False 
@@ -152,3 +166,20 @@ instance Default Status where
 
 -- | Degree of printing / logging to be executed by exposed commands.
 data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show, Read)
+
+-- | Encapsulation of hashing algorithm. Decomposed for mocking purposes
+--   for testing. Is an instance of 'Default'; use that unless testing.
+data CommitHasher = CommitHasher {
+    hashingAlg :: (Commit -> Hash)
+}
+
+instance Default CommitHasher where
+    def :: CommitHasher
+    def = CommitHasher
+        $ BS.pack
+        . map (BS.c2w . toLower . BS.w2c)
+        . BS.unpack
+        . BS.take 40
+        . Hex.hex
+        . SHA256.hash
+        . encode

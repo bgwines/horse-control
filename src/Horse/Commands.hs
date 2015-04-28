@@ -206,13 +206,6 @@ unstage path = do
 --   deletion) to the specified file or directory to the staging area.
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
-    -- can't yet tell which files were ever committed, so we can't
-    -- distinguish between a deleted file and a nonexistent one.
-    --pathExistsIsFile <- liftIO $ D.doesFileExist path
-    --pathExistsIsDir <- liftIO $ D.doesDirectoryExist path
-    --unless (pathExistsIsFile || pathExistsIsDir) $ do
-    --    left $ "Can't stage file or directory at path \"" ++ path ++ "\"; no file or directory exists at that path."
-
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
@@ -224,6 +217,15 @@ stage path = do
     relativePaths <- getRelativePaths relativePath
 
     diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
+
+    pathExistsIsFile <- liftIO $ D.doesFileExist path
+    pathExistsIsDir <- liftIO $ D.doesDirectoryExist path
+    when (diffs == mempty && (not pathExistsIsFile) && not (pathExistsIsDir)) $
+        -- if no file or directory exists at that path, but the diff
+        -- is empty, then it wasn't deleted, and, hence, must be an
+        -- invalid path.
+        left $ "Can't stage file or directory at path \"" ++ path ++ "\"; no file or directory exists at that path, and no file was deleted at that path."
+
     let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
 
     stagingArea <- HIO.loadStagingArea

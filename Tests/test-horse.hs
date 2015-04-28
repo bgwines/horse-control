@@ -348,7 +348,7 @@ testStageNonexistentFile = do
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
-    eitherStagingArea @?= Left "Can't stage file or directory at path \"xyz\"; no file or directory exists at that path."
+    assertBool "Shouldn't stage a deletion of a nonexistent file." (isLeft eitherStagingArea)
 
 testStageNonexistentDirectory :: Assertion
 testStageNonexistentDirectory = do
@@ -356,7 +356,7 @@ testStageNonexistentDirectory = do
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
-    eitherStagingArea @?= Left "Can't stage file or directory at path \"xyz\"; no file or directory exists at that path."
+    assertBool "Shouldn't stage a deletion of a nonexistent directory." (isLeft eitherStagingArea)
 
 testStagePathOutsideOfRepo :: Assertion
 testStagePathOutsideOfRepo = do
@@ -1332,12 +1332,12 @@ tests = testGroup "unit tests"
         (runTest testStagePathOutsideOfRepo)
      -- can't yet tell which files were ever committed, so we can't
      -- distinguish between a deleted file and a nonexistent one.
-     --, testCase
-     --    "Testing command `stage` (edge case 1)"
-     --    (runTest testStageNonexistentFile)
-     --, testCase
-     --    "Testing command `stage` (edge case 2)"
-     --    (runTest testStageNonexistentDirectory)
+     , testCase
+         "Testing command `stage` (edge case 1)"
+         (runTest testStageNonexistentFile)
+     , testCase
+         "Testing command `stage` (edge case 2)"
+         (runTest testStageNonexistentDirectory)
     , testCase
         "Testing command `stage` when given a directory"
         (runTest testStageDirectory)

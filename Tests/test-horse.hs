@@ -1277,8 +1277,114 @@ testStageFileWithNoChanges = do
     eitherStagingArea <- runEitherT $ H.stage "a"
     eitherStagingArea @?= (Right $ StagingArea [] [] [])
 
-    --eitherStatus <- runEitherT $ H.status (Just Quiet)
-    --eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
+
+testCheckoutTruncatedHash :: Assertion
+testCheckoutTruncatedHash = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let first = ByteString.take 8 . hash $ fromRight undefined eitherCommit1
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let second = ByteString.take 8 . hash $ fromRight undefined eitherCommit2
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+    let third = ByteString.take 8 . hash $ fromRight undefined eitherCommit3
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
+
+    return ()
+    where   
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            x <- quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+testCheckoutBadTruncatedHash1 :: Assertion
+testCheckoutBadTruncatedHash1 = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let commitHash = ByteString.take 8 . hash $ fromRight undefined eitherCommit1
+
+    eitherCheckoutResult <- runEitherT $ H.checkout "" (Just Quiet)
+
+    assertBool "Loading empty hash should fail." (isLeft eitherCheckoutResult)
+
+testCheckoutBadTruncatedHash2 :: Assertion
+testCheckoutBadTruncatedHash2 = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    -- unlikely that this will be the actual hash
+    eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" (Just Quiet)
+
+    assertBool "Loading bad hash should fail." (isLeft eitherCheckoutResult)
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -1330,8 +1436,6 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `stage` (edge case 1)"
         (runTest testStagePathOutsideOfRepo)
-     -- can't yet tell which files were ever committed, so we can't
-     -- distinguish between a deleted file and a nonexistent one.
      , testCase
          "Testing command `stage` (edge case 1)"
          (runTest testStageNonexistentFile)
@@ -1437,6 +1541,15 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `checkout` changes HEAD"
         (runTest testCheckoutChangesHEAD)
+    , testCase
+        "Testing command `checkout` given with truncated hash"
+        (runTest testCheckoutTruncatedHash)
+    , testCase
+        "Testing command `checkout` given a bad truncated hash (case 1)"
+        (runTest testCheckoutBadTruncatedHash1)
+    , testCase
+        "Testing command `checkout` given a bad truncated hash (case 2)"
+        (runTest testCheckoutBadTruncatedHash2)
     ]
 
 main :: IO ()

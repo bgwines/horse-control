@@ -15,6 +15,7 @@ Differences with Git
 * addition of `horse unstage`
 * `horse init` doesn't overwrite existing repositories like `git init` does
 * can't initialize a repo in a subdirectory of another repo
+* `checkout` completely overwrites working directory (product of not distinguishing between tracked and untracked files)
 
 Installation
 ------------

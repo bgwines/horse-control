@@ -11,6 +11,7 @@ module Horse.Constants
 , diffsPath
 , commitsPath
 , configPath
+, hashesPath
 
 -- * lists
 , directories
@@ -104,6 +105,11 @@ diffsPath = repositoryDataDir </> "diffs"
 commitsPath :: FilePath
 commitsPath = repositoryDataDir </> "commits"
 
+-- | The path to where all commits' hashes are stored (relative to root of
+--   repository).
+hashesPath :: FilePath
+hashesPath = repositoryDataDir </> "hashes"
+
 -- | The path to where the object representing user-specified
 --   configuration information is stored. Returnvalue is wrapped in
 --   the `IO` monad because getting the user's home directory is
@@ -125,5 +131,6 @@ databasePaths = [diffsPath, commitsPath]
 --   those files upon initialization of an empty repository.
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
-    [ (headHashPath, Serialize.encode $ (Default.def :: Hash))
-    , (stagingAreaPath, Serialize.encode $ (Default.def :: StagingArea)) ]
+    [ (headHashPath    , Serialize.encode $ (Default.def :: Hash))
+    , (stagingAreaPath , Serialize.encode $ (Default.def :: StagingArea)) 
+    , (hashesPath      , Serialize.encode $ (Default.def :: [Hash])) ]

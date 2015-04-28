@@ -10,6 +10,9 @@ module Horse.IO
 , loadHeadHash
 , writeHeadHash
 
+-- * hashes
+, loadAllHashes
+
 -- * commits
 , loadCommit
 , writeCommit
@@ -120,11 +123,22 @@ loadCommit key = do
         loadErrorMessage = "Could not fetch commit for key " ++ (show key)
 
 -- | Writes the commit to the database, under the key of its hash.
-writeCommit :: Commit -> IO ()
+writeCommit :: Commit -> EitherT Error IO ()
 writeCommit commit = do
-    db <- DB.open HC.commitsPath Default.def
-    DB.put db Default.def (hash commit) (Serialize.encode commit)
-    DBInternal.unsafeClose db
+    writeHash (hash commit)
+    liftIO $ do
+        db <- DB.open HC.commitsPath Default.def
+        DB.put db Default.def (hash commit) (Serialize.encode commit)
+        DBInternal.unsafeClose db
+
+-- * hashes
+
+writeHash :: Hash -> EitherT Error IO ()
+writeHash hash =
+    loadAllHashes >>= liftIO . writeToFile HC.hashesPath . (:) hash
+
+loadAllHashes :: EitherT Error IO [Hash]
+loadAllHashes = loadFromFile HC.hashesPath
 
 -- * config
 

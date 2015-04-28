@@ -47,7 +47,8 @@ import qualified System.Directory as D
 import qualified Data.Hex as Hex
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
-import qualified Data.ByteString as ByteString
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Internal as BS (c2w, w2c)
 
 import qualified Crypto.Hash.SHA256 as SHA256
 
@@ -58,7 +59,9 @@ import qualified Database.LevelDB.Internal as DBI
 
 import qualified Filesystem.Path (FilePath, collapse)
 
-import Data.List (foldl', (\\), isInfixOf, isPrefixOf, nub)
+import Data.Char (toLower)
+
+import Data.List (find, foldl', (\\), isInfixOf, isPrefixOf, nub)
 
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
@@ -80,6 +83,7 @@ import Horse.Utils
     , print'
     , putStrLn'
     , eitherToMaybe
+    , maybeToEither
     , fromEitherMaybeDefault
     , (</>)
     , whenM
@@ -108,7 +112,7 @@ config maybeName maybeEmail = do
                     maybeEmail }
             HIO.writeConfig $ Config { userInfo = updatedUserInfo }
         else do
-            HF.createFileWithContents configPath ByteString.empty
+            HF.createFileWithContents configPath BS.empty
 
             let userInfo = UserInfo {
                   name = fromMaybe Default.def maybeName
@@ -300,8 +304,8 @@ commit maybeMessage maybeVerbosity = do
     let commitHash = hashCommit hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
+    HIO.writeCommit completeCommit
     liftIO $ do
-        HIO.writeCommit completeCommit
         HIO.writeHeadHash commitHash
         HIO.writeStagingArea (Default.def :: StagingArea)
         D.setCurrentDirectory userDirectory
@@ -311,7 +315,7 @@ commit maybeMessage maybeVerbosity = do
 
     unless (verbosity == Quiet) $ do
         putStrLn' $ "[<branch> "
-            ++ (Prelude.show . ByteString.take 8 $ commitHash)
+            ++ (Prelude.show . BS.take 8 $ commitHash)
             ++  "] " ++ message
 
         let numFiles = FD.numFilesAffected stagedDiff
@@ -330,7 +334,10 @@ commit maybeMessage maybeVerbosity = do
 -- TODO: where does this go?
 hashCommit :: Commit -> Hash
 hashCommit
-    = ByteString.take 40
+    = BS.pack
+    . map (BS.c2w . toLower . BS.w2c)
+    . BS.unpack
+    . BS.take 40
     . Hex.hex
     . SHA256.hash
     . Serialize.encode
@@ -346,8 +353,8 @@ squash ref = do
     endHash <- refToHash ref
     let squashedCommit = getSquashedCommit historyToRoot endHash
 
+    HIO.writeCommit squashedCommit
     liftIO $ do
-        HIO.writeCommit squashedCommit
         HIO.writeHeadHash (hash squashedCommit)
         D.setCurrentDirectory userDirectory
 
@@ -533,7 +540,7 @@ refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
-        someHash -> return $ stringToHash someHash
+        someHash -> untruncateHash . stringToHash $ someHash
     final <- (hoistEither relatives) >>= applyRelatives base
     right final
     where
@@ -556,6 +563,14 @@ refToHash unparsedRef = do
 
         isRelativeSyntax :: Char -> Bool
         isRelativeSyntax ch = ch == parentSyntax
+
+untruncateHash :: Hash -> EitherT Error IO Hash
+untruncateHash hash = do
+    when (BS.length hash < 6) $
+        left "Fatal: truncated hash too short."
+    allHashes <- HIO.loadAllHashes
+    let maybeResult = find ((==) hash . BS.take (BS.length hash)) allHashes
+    hoistEither . maybeToEither "Fatal: truncated hash does not match any stored hashes." $ maybeResult
 
 -- * diffing
 

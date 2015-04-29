@@ -396,7 +396,7 @@ show maybeRef maybeVerbosity = do
     ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
 
-    when (verbosity /= Quiet) $ print' commit
+    when (verbosity /= Quiet) $ liftIO (HP.printCommit commit)
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -422,7 +422,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
             headHash <- HIO.loadHeadHash
             unless (verbosity == Quiet) $ do
-                liftIO $ mapM_ (\c -> HP.printCommit c (hash c == headHash)) history
+                liftIO $ mapM_ (\c -> HP.printCommitInLog c (hash c == headHash)) history
             right history
         else right []
 

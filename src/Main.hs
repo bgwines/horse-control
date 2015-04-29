@@ -80,7 +80,10 @@ parseCheckout = Checkout
     <*> verbosityOption
 
 parseShow :: Parser Command
-parseShow = Show <$> (optional $ strOption (metavar "REF"))
+parseShow = Show <$> (optional $ argument str
+        ( metavar "REF"
+        <> help "Ref to show" )
+    )
 
 parseLog :: Parser Command
 parseLog = Log

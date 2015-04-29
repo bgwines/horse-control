@@ -1416,6 +1416,321 @@ testCheckoutCollidingTruncatedHashes = do
 
     assertBool "Committing with a colliding truncated hash should fail." (isLeft eitherCheckoutSuccess)
 
+testCheckoutRelativeSyntaxCaret :: Assertion
+testCheckoutRelativeSyntaxCaret = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+
+    let third = ByteString.take 8 . hash $ fromRight undefined eitherCommit3
+    let second = third `mappend` "^"
+    let first = second `mappend` "^"
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
+
+    return ()
+    where   
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            x <- quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+testCheckoutRelativeSyntaxTilde :: Assertion
+testCheckoutRelativeSyntaxTilde = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+
+    let third = hash $ fromRight undefined eitherCommit3
+    let second = third `mappend` "~1"
+    let first = third `mappend` "~2"
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
+
+    return ()
+    where   
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            x <- quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+testCheckoutTruncatedRelativeSyntax :: Assertion
+testCheckoutTruncatedRelativeSyntax = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+
+    let third = ByteString.take 8 . hash $ fromRight undefined eitherCommit3
+    let second = third `mappend` "~1"
+    let first = third `mappend` "~2"
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
+
+    return ()
+    where   
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            x <- quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+
+testCheckoutRelativeSyntaxTildeZero :: Assertion
+testCheckoutRelativeSyntaxTildeZero = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let first = (hash $ fromRight undefined eitherCommit1) `mappend` "~0"
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let second = (hash $ fromRight undefined eitherCommit2) `mappend` "~0"
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+    let third = (hash $ fromRight undefined eitherCommit3) `mappend` "~0"
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 first
+    test2 second
+    test3 third
+    test2 second
+    test1 first
+    test3 third
+    test1 first
+
+    return ()
+    where   
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            x <- quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -1583,6 +1898,18 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `checkout` given colliding truncated hashes"
         (runTest testCheckoutCollidingTruncatedHashes)
+    , testCase
+        "Testing command `checkout` given relative hash (case 1)"
+        (runTest testCheckoutRelativeSyntaxCaret)
+    , testCase
+        "Testing command `checkout` given relative hash (case 2)"
+        (runTest testCheckoutRelativeSyntaxTilde)
+    , testCase
+        "Testing command `checkout` given truncated relative hash"
+        (runTest testCheckoutTruncatedRelativeSyntax)
+    , testCase
+        "Testing command `checkout` given relative hash (edge case 1)"
+        (runTest testCheckoutRelativeSyntaxTildeZero)
     ]
 
 main :: IO ()

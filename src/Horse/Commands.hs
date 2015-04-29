@@ -526,28 +526,43 @@ refToHash unparsedRef = do
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
         someHash -> untruncateHash . stringToHash $ someHash
-    final <- (hoistEither relatives) >>= applyRelatives base
+    final <- (hoistEither $ toAncestorDistance relatives) >>= applyRelatives base
     right final
     where
         parentSyntax :: Char
         parentSyntax = '^'
 
-        applyRelatives :: Hash -> [Relative] -> EitherT Error IO Hash
-        applyRelatives h [] = right h
+        ancestorSyntax :: Char
+        ancestorSyntax = '~'
+
+        -- throws exception if `read` fails
+        toAncestorDistance :: String -> Either Error Int
+        toAncestorDistance [] = Right 0
+        toAncestorDistance r =
+            if all ((==) parentSyntax) r
+                then Right $ length r
+                else if any ((==) parentSyntax) r
+                    then Left $ "Fatal: cannot combine '" ++ [parentSyntax] ++ "' and '" ++ [ancestorSyntax] ++ "' syntax."
+                    else Right $ read $ tail r
+
+        applyRelatives :: Hash -> Int -> EitherT Error IO Hash
+        applyRelatives h ancestorDistance
+            | ancestorDistance < 0 = left $ "Fatal: negative relative syntax: " ++ (Prelude.show ancestorDistance)
+            | otherwise = do
+                history <- HIO.loadCommit h >>= loadHistory
+                when (ancestorDistance >= length history) $
+                    left "Fatal: specified relative commit is too far back in history; no commits exist there."
+                right $ hash (history !! ancestorDistance)
 
         baseRef :: String
         baseRef = takeWhile (not . isRelativeSyntax) unparsedRef
 
-        relatives :: Either Error [Relative]
-        relatives = mapM toRelative $ dropWhile (not . isRelativeSyntax) unparsedRef
-
-        toRelative :: Char -> Either Error Relative
-        toRelative ch = if ch == parentSyntax
-            then Right Parent
-            else Left "Undefined relative syntax"
+        relatives :: String
+        relatives = dropWhile (not . isRelativeSyntax) unparsedRef
 
         isRelativeSyntax :: Char -> Bool
-        isRelativeSyntax ch = ch == parentSyntax
+        isRelativeSyntax ch
+            = (ch == parentSyntax) || (ch == ancestorSyntax)
 
         untruncateHash :: Hash -> EitherT Error IO Hash
         untruncateHash hash = do

@@ -26,7 +26,6 @@ module Horse.Types(
 -- * Aliases
 , EmailAddress
 , Hash
-, Relative(..)
 , Date
 , Error
 ) where
@@ -77,10 +76,6 @@ type EmailAddress = String
 
 -- | The hash type used for hashing commits and diffs.
 type Hash = ByteString
-
--- | Data type to represent references relative to a commit
---   (e.g. ^ or ~ from Git)
-data Relative = Parent
 
 instance Default Hash where
     def :: Hash

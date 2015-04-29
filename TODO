@@ -1,9 +1,10 @@
-* input validation
+* -q -v
 * branches
     * cherry-pick
     * merging
     * "current" branch
-* revert
-* -q -v
 * writerT
-* can't initialize a repo in a subdirectory of another repo
+* revert
+* STM
+* networking
+* multithreading

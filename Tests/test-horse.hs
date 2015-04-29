@@ -917,7 +917,7 @@ testCommitAmend = do
         }
 
     -- TODO: make this better
-    message squashedCommit @?= message firstCommit `mappend` "default message"
+    message squashedCommit @?= message firstCommit <> "default message"
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
@@ -981,7 +981,7 @@ testCommitAmendFromSubdir = do
         }
 
     -- TODO: make this better
-    message squashedCommit @?= message firstCommit `mappend` "default message"
+    message squashedCommit @?= message firstCommit <> "default message"
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
@@ -1063,7 +1063,7 @@ testSquash = do
         }
 
     -- TODO: make this better
-    message squashedCommit @?= message firstCommit `mappend` "default message" `mappend` "default message"
+    message squashedCommit @?= message firstCommit <> "default message" <> "default message"
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
@@ -1146,7 +1146,7 @@ testSquashFromSubdir = do
         }
 
     -- TODO: make this better
-    message squashedCommit @?= message firstCommit `mappend` "default message" `mappend` "default message"
+    message squashedCommit @?= message firstCommit <> "default message" <> "default message"
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
@@ -1446,8 +1446,8 @@ testCheckoutRelativeSyntaxCaret = do
     eitherCommit3 <- runEitherT noargCommit
 
     let third = ByteString.take 8 . hash $ fromRight undefined eitherCommit3
-    let second = third `mappend` "^"
-    let first = second `mappend` "^"
+    let second = third <> "^"
+    let first = second <> "^"
 
     ----------------
 
@@ -1525,8 +1525,8 @@ testCheckoutRelativeSyntaxTilde = do
     eitherCommit3 <- runEitherT noargCommit
 
     let third = hash $ fromRight undefined eitherCommit3
-    let second = third `mappend` "~1"
-    let first = third `mappend` "~2"
+    let second = third <> "~1"
+    let first = third <> "~2"
 
     ----------------
 
@@ -1604,8 +1604,8 @@ testCheckoutTruncatedRelativeSyntax = do
     eitherCommit3 <- runEitherT noargCommit
 
     let third = ByteString.take 8 . hash $ fromRight undefined eitherCommit3
-    let second = third `mappend` "~1"
-    let first = third `mappend` "~2"
+    let second = third <> "~1"
+    let first = third <> "~2"
 
     ----------------
 
@@ -1664,7 +1664,7 @@ testCheckoutRelativeSyntaxTildeZero = do
 
     runEitherT $ H.stage "a"
     eitherCommit1 <- runEitherT noargCommit
-    let first = (hash $ fromRight undefined eitherCommit1) `mappend` "~0"
+    let first = (hash $ fromRight undefined eitherCommit1) <> "~0"
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "2"
@@ -1673,7 +1673,7 @@ testCheckoutRelativeSyntaxTildeZero = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     eitherCommit2 <- runEitherT noargCommit
-    let second = (hash $ fromRight undefined eitherCommit2) `mappend` "~0"
+    let second = (hash $ fromRight undefined eitherCommit2) <> "~0"
     ----------------
 
     D.removeFile "a" >> createFileWithContents "a" "3"
@@ -1682,7 +1682,7 @@ testCheckoutRelativeSyntaxTildeZero = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     eitherCommit3 <- runEitherT noargCommit
-    let third = (hash $ fromRight undefined eitherCommit3) `mappend` "~0"
+    let third = (hash $ fromRight undefined eitherCommit3) <> "~0"
 
     ----------------
 

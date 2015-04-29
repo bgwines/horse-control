@@ -85,8 +85,9 @@ import Horse.Utils
     , unlessM
     , toMaybe )
 import qualified Horse.IO as HIO
-import qualified Horse.Filesystem as HF
+import qualified Horse.Printing as HP
 import qualified Horse.Constants as HC
+import qualified Horse.Filesystem as HF
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
@@ -421,25 +422,13 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
             headHash <- HIO.loadHeadHash
             unless (verbosity == Quiet) $ do
-                liftIO $ mapM_ (\c -> printCommit c (hash c == headHash)) history
+                liftIO $ mapM_ (\c -> HP.printCommit c (hash c == headHash)) history
             right history
         else right []
 
     liftIO $ D.setCurrentDirectory userDirectory
 
     right history
-    where
-        printCommit :: Commit -> Bool -> IO ()
-        printCommit (Commit author date hash _ diff message) isHead = do
-            let headAnnotation = if isHead
-                then " (HEAD)"
-                else ""
-            putStrLn $ "* " ++ shortHash ++ " - " ++ (Prelude.show date) ++ headAnnotation
-            putStrLn $ "|        " ++ message
-            putStrLn $ "|  - " ++ (Prelude.show author)
-            where
-                shortHash :: String
-                shortHash = take 7 $ hashToString hash
 
 -- * helper functions (not exposed)
 

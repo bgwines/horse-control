@@ -59,5 +59,5 @@ printCommit (Commit author date hash _ diff message) = do
     putChunkLn $ chunk (ByteString.pack message) & fore brightWhite
     putChunkLn $ chunk ("" :: ByteString)
 
-    putChunkLn $ chunk ("diff --horse-control" :: ByteString) & fore brightWhite
+    putChunkLn $ chunk ("diff --horse-control" :: ByteString) & bold
     FD.printDiff diff

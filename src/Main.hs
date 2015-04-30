@@ -30,6 +30,8 @@ data Command
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
     | Squash String
+    | Ignore String
+    | ListIgnored (Maybe Types.Verbosity)
     deriving (Show)
 
 verbosityOption :: Parser (Maybe Types.Verbosity)
@@ -105,6 +107,12 @@ parseVersion = pure Version
 parseSquash :: Parser Command
 parseSquash = Squash <$> (argument str $ metavar "REF")
 
+parseIgnore :: Parser Command
+parseIgnore = Ignore <$> (argument str $ metavar "PATH")
+
+parseListIgnored :: Parser Command
+parseListIgnored = ListIgnored <$> verbosityOption
+
 parseCommand :: Parser Command
 parseCommand = subparser
     $  command "version"  (parseVersion  `withInfo` versionHelpMessage)
@@ -118,6 +126,8 @@ parseCommand = subparser
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
     <> command "log"      (parseLog      `withInfo` logHelpMessage)
     <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
+    <> command "ignore"   (parseIgnore   `withInfo` ignoreHelpMessage)
+    <> command "listIgnored" (parseListIgnored `withInfo` listIgnoredHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -152,6 +162,12 @@ parseCommand = subparser
         squashHelpMessage :: String
         squashHelpMessage = "Squash commits up to specified ref (non-inclusive)"
 
+        ignoreHelpMessage :: String
+        ignoreHelpMessage = "Ignore a file or directory"
+
+        listIgnoredHelpMessage :: String
+        listIgnoredHelpMessage = "List ignored files"
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
@@ -170,6 +186,8 @@ run cmd = do
         Commit msg False v -> runEitherT $ void $ Commands.commit Default.def msg v
         Commit msg True v  -> runEitherT $ void $ Commands.commitAmend Default.def msg v
         Squash ref         -> runEitherT $ void $ Commands.squash Default.def ref
+        Ignore path        -> runEitherT $ Commands.ignore path 
+        ListIgnored v      -> runEitherT $ void $ Commands.listIgnoredPaths v
     if isLeft eitherSuccess
         then putStrLn $ fromLeft Default.def eitherSuccess
         else return ()

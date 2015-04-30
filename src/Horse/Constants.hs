@@ -12,6 +12,7 @@ module Horse.Constants
 , commitsPath
 , configPath
 , hashesPath
+, ignoredPathsPath
 
 -- * lists
 , directories
@@ -41,7 +42,7 @@ import qualified System.Directory as D
 
 import qualified Filesystem.Path (FilePath)
 
-import qualified Data.Default as Default
+import qualified Data.Default as Def
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as ByteString
 
@@ -110,6 +111,11 @@ commitsPath = repositoryDataDir </> "commits"
 hashesPath :: FilePath
 hashesPath = repositoryDataDir </> "hashes"
 
+-- | The path to where all commits' hashes are stored (relative to root of
+--   repository).
+ignoredPathsPath :: FilePath
+ignoredPathsPath = repositoryDataDir </> "ignoredPaths"
+
 -- | The path to where the object representing user-specified
 --   configuration information is stored. Returnvalue is wrapped in
 --   the `IO` monad because getting the user's home directory is
@@ -131,6 +137,7 @@ databasePaths = [diffsPath, commitsPath]
 --   those files upon initialization of an empty repository.
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
-    [ (headHashPath    , Serialize.encode $ (Default.def :: Hash))
-    , (stagingAreaPath , Serialize.encode $ (Default.def :: StagingArea)) 
-    , (hashesPath      , Serialize.encode $ (Default.def :: [Hash])) ]
+    [ (headHashPath     , Serialize.encode $ (Def.def :: Hash))
+    , (stagingAreaPath  , Serialize.encode $ (Def.def :: StagingArea)) 
+    , (hashesPath       , Serialize.encode $ (Def.def :: [Hash]))
+    , (ignoredPathsPath , Serialize.encode $ (Def.def :: [FilePath])) ]

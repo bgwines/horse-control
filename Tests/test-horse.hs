@@ -502,6 +502,12 @@ testNoRepoSquash = testNoRepo $ H.squash Default.def Default.def
 testNoRepoUnstage :: Assertion
 testNoRepoUnstage = testNoRepo $ H.unstage Default.def
 
+testNoRepoIgnore :: Assertion
+testNoRepoIgnore = testNoRepo $ H.ignore Default.def
+
+testNoRepoListIgnored :: Assertion
+testNoRepoListIgnored = testNoRepo $ H.listIgnoredPaths (Just Quiet)
+
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
     runEitherT $ H.init (Just Quiet)
@@ -1730,6 +1736,80 @@ testCheckoutRelativeSyntaxTildeZero = do
             (not bExists) @? "`b` should not exist."
             return ()
 
+testIgnore :: Assertion
+testIgnore = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "a"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
+
+testIgnoreGivenDirectory :: Assertion
+testIgnoreGivenDirectory = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "x"
+    D.createDirectory "x/y"
+    createFileWithContents "x/a" "1"
+    createFileWithContents "x/y/a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "x"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
+
+testIgnoreGivenDirectoryFromSubdir :: Assertion
+testIgnoreGivenDirectoryFromSubdir = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "x"
+    D.createDirectory "x/y"
+    createFileWithContents "x/a" "1"
+    createFileWithContents "x/y/a" "1"
+    createFileWithContents "b" "1"
+
+    D.setCurrentDirectory "x"
+    runEitherT $ H.ignore "."
+    D.setCurrentDirectory ".."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
+
+
+testStagingIgnoredFile :: Assertion
+testStagingIgnoredFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "b"
+    runEitherT $ H.stage "b"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
+
+testIgnoreMultipleTimes :: Assertion
+testIgnoreMultipleTimes = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "x"
+    D.createDirectory "x/y"
+    createFileWithContents "x/a" "1"
+    createFileWithContents "x/y/a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "x/a"
+    runEitherT $ H.ignore "x/y"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
+
 
 tests :: TestTree
 tests = testGroup "unit tests"
@@ -1754,6 +1834,12 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `squash` run without a repo"
         (runTest testNoRepoSquash)
+    , testCase
+        "Testing command `ignore` run without a repo"
+        (runTest testNoRepoIgnore)
+    , testCase
+        "Testing command `listIgnored` run without a repo"
+        (runTest testNoRepoListIgnored)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -1910,6 +1996,21 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `checkout` given relative hash (edge case 1)"
         (runTest testCheckoutRelativeSyntaxTildeZero)
+    , testCase
+        "Testing command `ignore`"
+        (runTest testIgnore)
+    , testCase
+        "Testing command `ignore` multiple times"
+        (runTest testIgnoreMultipleTimes)
+    , testCase
+        "Testing command `ignore` (given a directory)"
+        (runTest testIgnoreGivenDirectory)
+    , testCase
+        "Testing command `ignore` from a subdirectory"
+        (runTest testIgnoreGivenDirectoryFromSubdir)
+    , testCase
+        "Testing command `ignore` by ignoring a file and then staging it"
+        (runTest testStagingIgnoredFile)
     ]
 
 main :: IO ()

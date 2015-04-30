@@ -17,6 +17,8 @@ module Horse.Commands
 , Horse.Commands.checkout
 , Horse.Commands.show
 , Horse.Commands.log
+, Horse.Commands.ignore
+, Horse.Commands.listIgnoredPaths
 ) where
 
 -- imports
@@ -56,7 +58,15 @@ import qualified Database.LevelDB.Internal as DBI
 
 import qualified Filesystem.Path (FilePath, collapse)
 
-import Data.List (find, foldl', (\\), isInfixOf, isPrefixOf, nub)
+import Data.List
+    ( groupBy 
+    , sort
+    , find
+    , foldl'
+    , (\\)
+    , isInfixOf
+    , isPrefixOf
+    , nub )
 
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
@@ -171,13 +181,52 @@ status maybeVerbosity = do
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
             diffWithHEAD Nothing
-                >>= right . getUnstagedFilesFromDiff stagedFiles
+                >>= right . (getUnstagedFilesFromDiff) stagedFiles
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
         getUnstagedFilesFromDiff stagedFiles
             = filter (not . (flip elem $ stagedFiles))
             . map FD.comp
             . FD.filediffs
+
+ignore :: String -> EitherT Error IO ()
+ignore path = do
+    -- TODO: figure out how to share this
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
+    -- relative to root of repo
+    relativePath <- HF.relativizePath path userDirectory
+    when (isPrefixOf ".." relativePath) $ do
+        left $ "Can't stage file or directory outside of the repository: " ++ path
+
+    HIO.writeIgnoredPaths [relativePath]
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+listIgnoredPaths :: Maybe Verbosity -> EitherT Error IO [FilePath]
+listIgnoredPaths maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
+    paths <- HIO.loadIgnoredPaths
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    unless (verbosity == Quiet) $ do
+        let sortedPaths = sort paths
+        let groupedPaths = groupBy sharePrefix sortedPaths
+        print' paths
+
+    right paths
+    where
+        sharePrefix :: (Eq a) => [a] -> [a] -> Bool
+        sharePrefix [] [] = True
+        sharePrefix a  [] = False
+        sharePrefix [] b  = False
+        sharePrefix (a:as) (b:bs) = a == b
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
@@ -186,7 +235,6 @@ unstage path = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
@@ -579,7 +627,8 @@ diffWithHEAD maybeFilesToDiff = do
     whenM commitsHaveBeenMade $ do
         HIO.loadHeadHash >>= checkoutToDirectory headDir
 
-    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] [HC.repositoryDataDir]
+    ignoredPaths <- listIgnoredPaths (Just Quiet)
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] ([HC.repositoryDataDir] ++ ignoredPaths)
 
     liftIO $ D.removeDirectoryRecursive headDir
 

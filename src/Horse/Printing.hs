@@ -46,7 +46,7 @@ printCommitInLog (Commit author date hash _ diff message) isHead = do
 printCommit :: Commit -> IO ()
 printCommit (Commit author date hash _ diff message) = do
     let hashLine :: ByteString = "commit " <> hash
-    putChunkLn $ chunk hashLine & fore magenta
+    putChunkLn $ chunk hashLine & fore yellow
 
     let authorLine :: ByteString = "Author: " <> (ByteString.pack . show $ author)
     putChunkLn $ chunk authorLine
@@ -59,4 +59,5 @@ printCommit (Commit author date hash _ diff message) = do
     putChunkLn $ chunk (ByteString.pack message) & fore brightWhite
     putChunkLn $ chunk ("" :: ByteString)
 
+    putChunkLn $ chunk ("diff --horse-control" :: ByteString) & fore brightWhite
     FD.printDiff diff

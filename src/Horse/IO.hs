@@ -20,6 +20,10 @@ module Horse.IO
 -- * config
 , loadConfig
 , writeConfig
+
+-- * ignore
+, loadIgnoredPaths
+, writeIgnoredPaths
 ) where
 
 -- imports
@@ -47,6 +51,7 @@ import qualified System.Directory as D
 import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as ByteString
+import qualified Data.ByteString.Char8 as ByteString8
 
 import qualified Database.LevelDB.Base as DB
 import qualified Database.LevelDB.Internal as DBInternal
@@ -55,6 +60,7 @@ import qualified Data.Text.Punycode as Punycode (encode)
 
 -- imported functions
 
+import Data.List (nub)
 import Data.Maybe (isJust, fromJust)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -133,15 +139,15 @@ writeCommit commit = do
 
 -- * hashes
 
+-- | Loads the hashes of all commits ever made in the repo.
+loadAllHashes :: EitherT Error IO [Hash]
+loadAllHashes = loadFromFile HC.hashesPath
+
 -- | Writes the specified hash to the list of hashes of every commit ever
 --   made in the repo.
 writeHash :: Hash -> EitherT Error IO ()
 writeHash hash =
     loadAllHashes >>= liftIO . writeToFile HC.hashesPath . (:) hash
-
--- | Loads the hashes of all commits ever made in the repo.
-loadAllHashes :: EitherT Error IO [Hash]
-loadAllHashes = loadFromFile HC.hashesPath
 
 -- * config
 
@@ -157,3 +163,19 @@ writeConfig :: Config -> IO ()
 writeConfig config = do
     configPath <- HC.configPath
     ByteString.writeFile configPath (Serialize.encode config)
+
+-- * ignore
+
+loadIgnoredPaths :: EitherT Error IO [FilePath]
+loadIgnoredPaths = map (ByteString8.unpack) <$> loadFromFile HC.ignoredPathsPath
+
+-- | Loads the hashes of all commits ever made in the repo.
+writeIgnoredPaths :: [FilePath] -> EitherT Error IO ()
+writeIgnoredPaths paths
+    = loadIgnoredPaths
+    >>= ( liftIO
+        . writeToFile HC.ignoredPathsPath
+        . map ByteString8.pack
+        . nub
+        . (++) paths )
+

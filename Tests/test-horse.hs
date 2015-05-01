@@ -54,7 +54,6 @@ import qualified Horse.Constants as H
 
 import qualified Filediff as FD
 import qualified Filediff.Types as FD
-import qualified Filediff.Sequence as FD
 
 -- | Runs a test in its own empty directory.
 -- | Effectively, it isolates it from all other tests.
@@ -906,7 +905,7 @@ testCommitAmend = do
             [ FD.Filediff
                 { FD.base = "b"
                 , FD.comp = "b"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -914,7 +913,7 @@ testCommitAmend = do
             , FD.Filediff
                 { FD.base = "a"
                 , FD.comp = "a"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"2")]
                     }
@@ -970,7 +969,7 @@ testCommitAmendFromSubdir = do
             [ FD.Filediff
                 { FD.base = "d/b"
                 , FD.comp = "d/b"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -978,7 +977,7 @@ testCommitAmendFromSubdir = do
             , FD.Filediff
                 { FD.base = "d/a"
                 , FD.comp = "d/a"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"2")]
                     }
@@ -1044,7 +1043,7 @@ testSquash = do
             [ FD.Filediff
                 { FD.base = "c"
                 , FD.comp = "c"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -1052,7 +1051,7 @@ testSquash = do
             , FD.Filediff
                 { FD.base = "b"
                 , FD.comp = "b"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -1060,7 +1059,7 @@ testSquash = do
             , FD.Filediff
                 { FD.base = "a"
                 , FD.comp = "a"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -1127,7 +1126,7 @@ testSquashFromSubdir = do
             [ FD.Filediff
                 { FD.base = "d/c"
                 , FD.comp = "d/c"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -1135,7 +1134,7 @@ testSquashFromSubdir = do
             , FD.Filediff
                 { FD.base = "d/b"
                 , FD.comp = "d/b"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }
@@ -1143,7 +1142,7 @@ testSquashFromSubdir = do
             , FD.Filediff
                 { FD.base = "d/a"
                 , FD.comp = "d/a"
-                , FD.change = FD.Add $ FD.SeqDiff
+                , FD.change = FD.Add $ FD.ListDiff
                     { FD.dels = []
                     , FD.adds = [(0,"3")]
                     }

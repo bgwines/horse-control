@@ -42,7 +42,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
 import qualified Filediff as FD
-import qualified Filediff.Sequence as FD
 import qualified Filediff.Types as FD
 
 import qualified Data.ByteString as BS
@@ -63,7 +62,7 @@ instance Serialize T.Text where
     put = put . TE.encodeUtf8
     get = fmap TE.decodeUtf8 get
 
-instance Serialize (FD.SeqDiff T.Text)
+instance Serialize (FD.ListDiff T.Text)
 instance Serialize FD.FileChange
 instance Serialize FD.Filediff
 instance Serialize FD.Diff
@@ -96,7 +95,7 @@ instance Serialize UserInfo
 instance Show UserInfo where
     show :: UserInfo -> String
     show (UserInfo userName userEmail) =
-        userName ++ " (" ++ userEmail ++ ")" 
+        userName ++ " <" ++ userEmail ++ ">"
 
 -- | A commit record.
 data Commit = Commit {

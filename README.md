@@ -1,7 +1,9 @@
 # horse-control
-Version control, written in Haskell with all that monadic goodness! (Currently totally in progress)
+Version control, written in Haskell with all that monadic goodness! (Currently totally in progress and not finished in the least)
 
 [![Build Status](https://travis-ci.org/bgwines/horse-control.svg?branch=master)](https://travis-ci.org/bgwines/horse-control)
+
+<img src="logo.png" alt="" width="100px"/>
 
 Differences with Git
 --------------------
@@ -43,6 +45,15 @@ Installation
 #### OSX ####
 
     > brew install leveldb
+
+Testing
+-------
+
+Testing suite: Tasty-HUnit
+
+Number of unit tests: 88 (and rising!)
+
+Code coverage: ![](coverage.png)
 
 Thanksto
 --------

@@ -53,7 +53,8 @@ import qualified Crypto.Hash.SHA256 as SHA256
 
 import Data.Char (toLower)
 
-import Data.Serialize (Serialize, put, get, encode)
+import Data.Serialize (Serialize, put, get)
+import qualified Data.Serialize as Serialize (encode)
 
 import Data.Default (Default, def)
 import Data.ByteString (ByteString, empty)
@@ -176,4 +177,4 @@ instance Default CommitHasher where
         . BS.take 40
         . Hex.hex
         . SHA256.hash
-        . encode
+        . Serialize.encode

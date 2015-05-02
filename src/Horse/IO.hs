@@ -100,8 +100,7 @@ writeStagingArea = writeToFile HC.stagingAreaPath
 
 -- * HEAD
 
--- | Loads hash of HEAD from disk. Returns a `Left` if no commits have
---   been made.
+-- | Loads hash of HEAD from disk.
 loadHeadHash :: EitherT Error IO Hash
 loadHeadHash = loadFromFile HC.headHashPath
 
@@ -126,7 +125,7 @@ loadCommit key = do
     hoistEither $ Serialize.decode commit
     where
         loadErrorMessage :: String
-        loadErrorMessage = "Could not fetch commit for key " ++ (show key)
+        loadErrorMessage = "Could not fetch commit for key " ++ (show key) ++ "."
 
 -- | Writes the commit to the database, under the key of its hash.
 writeCommit :: Commit -> EitherT Error IO ()

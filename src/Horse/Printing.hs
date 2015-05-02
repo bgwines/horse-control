@@ -4,20 +4,36 @@
 -- | A module encapsulating all printing to be done throughout command
 --   execution.
 module Horse.Printing
-( printCommitInLog
+( printLog
+, printCommitStats
 , printCommit
+, printStatus
 ) where
 
 import Rainbow
 
 import Data.Monoid
+import Control.Applicative
 
+import qualified Filediff.Stats as FD
 import qualified Filediff.Printing as FD
 
 import qualified Data.ByteString.Char8 as ByteString
 
 import Horse.Types
 import Horse.Utils (hashToString)
+
+printLog :: Maybe Hash -> [Commit] -> IO ()
+printLog maybeHeadHash
+    = mapM_ (\c ->
+        printCommitInLog c
+            (maybeBoolToBool $ ((==) $ hash c) <$> maybeHeadHash)
+        )
+    where
+        maybeBoolToBool :: Maybe Bool -> Bool
+        maybeBoolToBool (Just False) = False
+        maybeBoolToBool (Just True) = True
+        maybeBoolToBool Nothing = False
 
 -- | Prints a commit in `log` format. The 'Bool' represents whether the
 --   specified commit is `HEAD` or not.
@@ -61,3 +77,29 @@ printCommit (Commit author date hash _ diff message) = do
 
     putChunkLn $ chunk ("diff --horse-control" :: ByteString) & bold
     FD.printDiff diff
+
+printCommitStats :: Commit -> IO ()
+printCommitStats commit = do
+    putStrLn $ "[<branch> "
+        ++ (Prelude.show . ByteString.take 8 $ hash commit)
+        ++  "] " ++ (message commit)
+
+    let numFiles = FD.numFilesAffected $ diffWithPrimaryParent commit
+    let numAdds = FD.numAddedLines     $ diffWithPrimaryParent commit
+    let numDels = FD.numDeletedLines   $ diffWithPrimaryParent commit
+    let filesString = if numFiles == 1
+        then " file"
+        else " files"
+    putStrLn $ ""
+        ++ Prelude.show numFiles ++ filesString ++ " changed, "
+        ++ Prelude.show numAdds ++ " insertions(+), "
+        ++ Prelude.show numDels ++ " deletions(-)"
+
+printStatus :: Status -> IO ()
+printStatus (Status stagingArea unstagedFiles) = do
+    putStrLn "Staged changes:"
+    print stagingArea
+    putStrLn ""
+
+    putStrLn "Unstaged changes:"
+    print unstagedFiles

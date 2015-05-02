@@ -36,6 +36,8 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 
+import Control.Error.Util
+
 -- qualified imports
 
 import qualified Zora.List as ZL (take_while_keep_last)
@@ -88,7 +90,6 @@ import Horse.Utils
     , (|<$>|)
     , print'
     , putStrLn'
-    , eitherToMaybe
     , maybeToEither
     , fromEitherMaybeDefault
     , (</>)
@@ -102,29 +103,32 @@ import qualified Horse.Filesystem as HF
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
-config :: Maybe String -> Maybe EmailAddress -> IO ()
+config :: Maybe String -> Maybe EmailAddress -> EitherT Error IO Config
 config maybeName maybeEmail = do
-    configPath <- HC.configPath
-    configFileExistedBefore <- D.doesFileExist configPath
+    liftIO $ do
+        configPath <- HC.configPath
+        configFileExistedBefore <- D.doesFileExist configPath
 
-    if configFileExistedBefore
-        then do
-            eitherUserInfo <- runEitherT $ userInfo <$> HIO.loadConfig
-            let updatedUserInfo = UserInfo {
-                  name = fromEitherMaybeDefault
-                    (name <$> eitherUserInfo)
-                    maybeName
-                , email = fromEitherMaybeDefault
-                    (email <$> eitherUserInfo)
-                    maybeEmail }
-            HIO.writeConfig $ Config { userInfo = updatedUserInfo }
-        else do
-            HF.createFileWithContents configPath BS.empty
+        if configFileExistedBefore
+            then do
+                eitherUserInfo <- runEitherT $ userInfo <$> HIO.loadConfig
+                let updatedUserInfo = UserInfo {
+                      name = fromEitherMaybeDefault
+                        (name <$> eitherUserInfo)
+                        maybeName
+                    , email = fromEitherMaybeDefault
+                        (email <$> eitherUserInfo)
+                        maybeEmail }
+                HIO.writeConfig $ Config { userInfo = updatedUserInfo }
+            else do
+                HF.createFileWithContents configPath BS.empty
 
-            let userInfo = UserInfo {
-                  name = fromMaybe Default.def maybeName
-                , email = fromMaybe Default.def maybeEmail }
-            HIO.writeConfig $ Config { userInfo = userInfo }
+                let userInfo = UserInfo {
+                      name = fromMaybe Default.def maybeName
+                    , email = fromMaybe Default.def maybeEmail }
+                HIO.writeConfig $ Config { userInfo = userInfo }
+
+    HIO.loadConfig
 
 -- | Initializes an empty repository in the current directory. If
 --   one currently exists, it aborts.
@@ -135,10 +139,11 @@ init maybeVerbosity = do
     whenM (liftIO $ HF.isInRepository ".") $
         left "Fatal: directory is or is subdirectory of another horse-control repo"
 
+    config Nothing Nothing
+
     liftIO $ do
         -- initialize config file; it's read from
         -- in this function and hence needs to exist
-        config Nothing Nothing 
 
         mapM_ HF.destructivelyCreateDirectory HC.directories
 
@@ -167,12 +172,7 @@ status maybeVerbosity = do
     let currentStatus = Status stagingArea unstagedFiles
 
     unless (verbosity == Quiet) $ do
-        putStrLn' "Staged changes:"
-        print' stagingArea
-        putStrLn' ""
-
-        putStrLn' "Unstaged changes:"
-        print' unstagedFiles
+        liftIO $ HP.printStatus currentStatus
 
     liftIO $ D.setCurrentDirectory userDirectory
     right currentStatus
@@ -199,7 +199,7 @@ ignore path = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
-        left $ "Can't stage file or directory outside of the repository: " ++ path
+        left $ "Can't ignore file or directory outside of the repository: " ++ path
 
     HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . nub . (:) relativePath
 
@@ -214,7 +214,7 @@ unignore path = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
-        left $ "Can't stage file or directory outside of the repository: " ++ path
+        left $ "Can't unignore file or directory outside of the repository: " ++ path
 
     HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . removeSubdirsOf relativePath
 
@@ -235,17 +235,9 @@ listIgnoredPaths maybeVerbosity = do
     liftIO $ D.setCurrentDirectory userDirectory
 
     unless (verbosity == Quiet) $ do
-        let sortedPaths = sort paths
-        let groupedPaths = groupBy sharePrefix sortedPaths
         print' paths
 
     right paths
-    where
-        sharePrefix :: (Eq a) => [a] -> [a] -> Bool
-        sharePrefix [] [] = True
-        sharePrefix a  [] = False
-        sharePrefix [] b  = False
-        sharePrefix (a:as) (b:bs) = a == b
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
@@ -257,7 +249,7 @@ unstage path = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
-        left $ "Can't stage file or directory outside of the repository: " ++ path
+        left $ "Can't unstage file or directory outside of the repository: " ++ path
     relativePaths <- getRelativePaths relativePath
     -- TODO: share the above code
 
@@ -375,23 +367,10 @@ commit hasher maybeMessage maybeVerbosity = do
         D.setCurrentDirectory userDirectory
 
     when (verbosity == Verbose) $ do
-        print' completeCommit
+        liftIO $ HP.printCommit completeCommit
 
     unless (verbosity == Quiet) $ do
-        putStrLn' $ "[<branch> "
-            ++ (Prelude.show . BS.take 8 $ commitHash)
-            ++  "] " ++ message
-
-        let numFiles = FD.numFilesAffected stagedDiff
-        let numAdds = FD.numAddedLines stagedDiff
-        let numDels = FD.numDeletedLines stagedDiff
-        let filesString = if numFiles == 1
-            then " file"
-            else " files"
-        putStrLn' $ ""
-            ++ Prelude.show numFiles ++ filesString ++ " changed, "
-            ++ Prelude.show numAdds ++ " insertions(+), "
-            ++ Prelude.show numDels ++ " deletions(-)"
+        liftIO $ HP.printCommitStats completeCommit
 
     right completeCommit
 
@@ -438,9 +417,7 @@ squash hasher ref = do
 -- | Sets the contents of the filesystem to the state it had in the
 --   specified commit.
 checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
-checkout ref maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+checkout ref _ = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
@@ -489,7 +466,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
             headHash <- HIO.loadHeadHash
             unless (verbosity == Quiet) $ do
-                liftIO $ mapM_ (\c -> HP.printCommitInLog c (hash c == headHash)) history
+                liftIO $ HP.printLog (Just headHash) history
             right history
         else right []
 
@@ -557,19 +534,20 @@ loadHistory :: Commit -> EitherT Error IO [Commit]
 loadHistory commit
     = liftIO
     . fmap ((:) commit)
-    . iterateMaybeM (fmap eitherToMaybe . runEitherT . loadParent)
+    . iterateMaybeM (runMaybeT . loadParent)
     $ commit
     where
         -- | Attempts to load the parent commit for a given commit.
-        loadParent :: Commit -> EitherT Error IO Commit
+        loadParent :: Commit -> MaybeT IO Commit
         loadParent commit =
             if isJust $ parentHash commit
-                then HIO.loadCommit
+                then
+                    hushT
+                    . HIO.loadCommit
                     . fromJust
                     . parentHash
                     $ commit
-                else left $ "No parent for commit with hash " ++
-                    (Prelude.show . hash $ commit)
+                else MaybeT $ return Nothing
 
 -- | Given any string, attempt to convert it to a hash.
 --   Succeeds if the string is in a hash format, even if
@@ -582,8 +560,7 @@ refToHash unparsedRef = do
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
         someHash -> untruncateHash . stringToHash $ someHash
-    final <- (hoistEither $ toAncestorDistance relatives) >>= applyRelatives base
-    right final
+    (hoistEither $ toAncestorDistance relatives) >>= applyRelatives base
     where
         parentSyntax :: Char
         parentSyntax = '^'
@@ -602,9 +579,7 @@ refToHash unparsedRef = do
                     else Right $ read $ tail r
 
         applyRelatives :: Hash -> Int -> EitherT Error IO Hash
-        applyRelatives h ancestorDistance
-            | ancestorDistance < 0 = left $ "Fatal: negative relative syntax: " ++ (Prelude.show ancestorDistance)
-            | otherwise = do
+        applyRelatives h ancestorDistance = do
                 history <- HIO.loadCommit h >>= loadHistory
                 when (ancestorDistance >= length history) $
                     left "Fatal: specified relative commit is too far back in history; no commits exist there."
@@ -622,8 +597,8 @@ refToHash unparsedRef = do
 
         untruncateHash :: Hash -> EitherT Error IO Hash
         untruncateHash hash = do
-            when (BS.length hash < 6) $
-                left "Fatal: truncated hash too short."
+            when (BS.null hash) $
+                left "Fatal: can't untruncate the empty hash."
             allHashes <- HIO.loadAllHashes
             let matching = filter ((==) hash . BS.take (BS.length hash)) allHashes
             case length matching of
@@ -654,7 +629,7 @@ diffWithHEAD maybeFilesToDiff = do
     if isNothing maybeFilesToDiff
         then right allFilesDiff
         else do
-            let filesToDiff = fromMaybe undefined maybeFilesToDiff
+            let filesToDiff = fromJust maybeFilesToDiff
             -- `comp` instead of `base` because `comp` is ".", whereas
             -- `base` is ".horse/<temp directory>"
             right

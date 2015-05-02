@@ -72,7 +72,6 @@ import Control.Monad.IO.Class (liftIO, MonadIO(..))
 import Horse.Types
 import Horse.Utils
     ( maybeToEither
-    , eitherToMaybe
     , stringToHash
     , putStrLn'
     , iterateMaybe

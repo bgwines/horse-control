@@ -1,8 +1,7 @@
 -- | Utility functions used by the implementation.
 module Horse.Utils
 ( -- * conversions
-  eitherToMaybe
-, maybeToEither
+  maybeToEither
 , fromEitherMaybeDefault
 , stringToHash
 , hashToString
@@ -16,7 +15,6 @@ module Horse.Utils
 , unlessM
 
 -- * combinators
-, (|$|)
 , (|<$>|)
 , (</>)
 ) where
@@ -36,11 +34,6 @@ import qualified Data.Default as Default
 import qualified Data.Convertible as Convert
 
 -- * conversions
-
--- | Lossily convert, discarding the error object.
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe (Left _) = Nothing
-eitherToMaybe (Right x) = Just x
 
 -- | Convert, with a error message to be used if the `Maybe` is `Nothing`.
 maybeToEither :: Error -> Maybe b -> Either Error b
@@ -96,17 +89,10 @@ unlessM mCond action = mCond >>= (flip unless $ action)
 
 -- * combinators
 
--- | Like `<$>`, but where the function is contained in
---   a functor instead of the argument (in this case,
---   restricted to Maybe, not all functors). If the
---   maybe function is `Nothing`, then no application
---   happens. otherwise, we apply the function.
-(|$|) :: Maybe (a -> a) -> a -> a
-(Nothing) |$| x = x
-(Just f) |$| x = f x
-
--- | Like <(|$|)> above, but where the argument to the function
---   is wrapped in a functor.
+-- | Most easily understood from its implementation:
+--
+--     > (Nothing) |<$>| x = x
+--     > (Just f) |<$>| x = f <$> x
 (|<$>|) :: (Functor f) => Maybe (a -> a) -> f a -> f a
 (Nothing) |<$>| x = x
 (Just f) |<$>| x = f <$> x

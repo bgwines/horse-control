@@ -16,6 +16,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 
+import Data.Maybe
 import Data.List ((\\))
 
 import Filesystem.Path (parent)
@@ -83,44 +84,46 @@ getDirectoryContentsRecursiveSafe' directory = do
             return $ files ++ recFiles
 
 -- | Removes the oldest ancestor from a path component, e.g.
--- |
--- |     > removeFirstPathComponent "a/b/c"
--- |     "b/c"
+--  
+--       > removeFirstPathComponent "a/b/c"
+--       "b/c"
+--
+-- Errors if given 'FilePath' doesn't have any \'/\' in it.
 removeFirstPathComponent :: FilePath -> FilePath
-removeFirstPathComponent path =
-    if null . filter ((==) '/') $ path
-         then error "path without '/' in it"
-         else tail . dropUntil ((==) '/') $ path
+removeFirstPathComponent = dropUntil ((==) '/')
 
 -- | Takes a list of filepaths, and removes "." and ".." from it.
 removeDotDirs :: [FilePath] -> [FilePath]
 removeDotDirs = flip (\\) $ [".", ".."]
 
 -- | Drops elements from the given list until the predicate function
--- | returns `True` (returned list includes element that passes test)
+--   returns `True`. Note: API is such that the returned list does NOT
+--   include the element that passes test)
 dropUntil :: (a -> Bool) -> [a] -> [a]
 dropUntil _ [] = []
 dropUntil f (x:xs) =
     if f x
-        then (x:xs)
+        then xs
         else dropUntil f xs
 
--- | assumes the first parameter is a prefix of the second; errors if
---   false
-dropPrefix :: (Eq a) => [a] -> [a] -> [a]
-dropPrefix [] bs = bs
-dropPrefix (a:as) (b:bs)
-    | a /= b = error "not a prefix"
-    | otherwise = dropPrefix as bs
+-- | Assumes the first parameter is a prefix of the second -- if not,
+--   it'll just drop all of the first one anyway.
+dropPrefix :: (Eq a) => [a] -> [a] -> Maybe [a]
+dropPrefix [] bs = Just bs
+dropPrefix _  [] = Nothing
+dropPrefix (a:as) (b:bs) =
+    if a == b
+        then dropPrefix as bs
+        else Nothing
 
--- | Given (in order) a path to relativize, the root of the repo, and
---   the user's directory (to which the first parameter should be
---   relative), returns the first parameter made relative to the root
---   of the repo (the second parameter).
+-- | Given a path to relativize and the user's directory (to which the
+--   first parameter should be relative), returns the first parameter
+--   made relative to the root of the repo.
 relativizePath :: FilePath -> FilePath -> EitherT Error IO FilePath
 relativizePath path userDirectory = do
     root <- repoRoot
-    right . collapse . tail $ (dropPrefix root userDirectory) </> path
+    let userDirectoryRelativeToRoot = dropPrefix root userDirectory
+    right . collapse . tail $ (fromJust userDirectoryRelativeToRoot) </> path
 
 -- | If the current directory is a repo or a subdirectory of one,
 --   gets the ancestor that is a repo. If none are, returns an error
@@ -130,7 +133,7 @@ repoRoot = do
     ancestors <- liftIO $ D.getCurrentDirectory >>= filesystemAncestors
     repoAncestors <- liftIO $ takeWhileM isInRepository ancestors
     if null repoAncestors
-        then left "Error: current directory is not a repo or a decendant of one."
+        then left "Fatal: current directory is not a repo or a decendant of one."
         else right . last $ repoAncestors
     where
         -- | Monadic 'takeWhile'.

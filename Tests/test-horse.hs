@@ -37,8 +37,8 @@ import System.Exit (exitSuccess)
 import Data.Time.Clock (getCurrentTime, utctDay)
 import Data.Time.Calendar (toGregorian)
 
-import Control.Monad ((>>=), return, when)
-import Control.Applicative ((<$>), (<*>))
+import Control.Monad
+import Control.Applicative
 import Control.Monad.IO.Class (liftIO)
 
 import Data.Either.Combinators (isLeft, isRight, fromLeft, fromRight)
@@ -51,6 +51,7 @@ import qualified Horse.IO as H
 import qualified Horse.Utils as H
 import qualified Horse.Commands as H
 import qualified Horse.Constants as H
+import qualified Horse.Filesystem as H
 
 import qualified Filediff as FD
 import qualified Filediff.Types as FD
@@ -102,6 +103,32 @@ getStatus = do
 assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
 assertFieldEqual a b field = field a @?= field b
 
+testRelativeSyntaxErrorCase :: Assertion
+testRelativeSyntaxErrorCase = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    eitherLogResult <- runEitherT $ H.log (Just "HEAD^~1") Nothing (Just Quiet)
+    eitherLogResult @?= Left "Fatal: cannot combine '^' and '~' syntax."
+
+testLogTooFarBackSyntax :: Assertion
+testLogTooFarBackSyntax = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    eitherLogResult <- runEitherT $ H.log (Just "HEAD~2") Nothing (Just Quiet)
+    eitherLogResult @?= Left "Fatal: specified relative commit is too far back in history; no commits exist there."
+
+    eitherLogResult2 <- runEitherT $ H.log (Just "HEAD^^") Nothing (Just Quiet)
+    eitherLogResult2 @?= Left "Fatal: specified relative commit is too far back in history; no commits exist there."
+
+
 testLog :: Assertion
 testLog = do
     runEitherT $ H.init (Just Quiet)
@@ -124,7 +151,7 @@ testLog = do
 
         let commits = [commitA, commitB, commitC, commitD]
 
-        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just "HEAD") Nothing (Just Quiet)
         liftIO $ commits @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
@@ -196,6 +223,35 @@ testLogEdgeCase3 = do
         let ref = H.hashToString . hash $ head commits
         history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
         liftIO $ ([head commits]) @?= history
+
+        history2 <- H.log Nothing (Just 2) (Just Quiet)
+        liftIO $ (length history2) @?= 2
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft undefined eitherSuccess)
+    return ()
+
+testLogEdgeCase4 :: Assertion
+testLogEdgeCase4 = do
+    runEitherT $ H.init (Just Quiet)
+    eitherSuccess <- runEitherT $ do
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        noargCommit
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        noargCommit
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        noargCommit
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        noargCommit
+
+        history <- reverse <$> H.log Nothing (Just 0) (Just Quiet)
+        liftIO $ [] @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
     return ()
@@ -348,7 +404,7 @@ testStageNonexistentFile = do
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
-    assertBool "Shouldn't stage a deletion of a nonexistent file." (isLeft eitherStagingArea)
+    eitherStagingArea @?= Left ("Can't stage file or directory at path \"xyz\"; no file or directory exists at that path, and no file was deleted at that path.")
 
 testStageNonexistentDirectory :: Assertion
 testStageNonexistentDirectory = do
@@ -360,17 +416,17 @@ testStageNonexistentDirectory = do
 
 testStagePathOutsideOfRepo :: Assertion
 testStagePathOutsideOfRepo = do
-    D.createDirectory "repo"
-    createFileWithContents "a" "a"
-    D.setCurrentDirectory "repo"
-
     runEitherT $ H.init (Just Quiet)
 
     eitherStagingArea <- runEitherT $ H.stage "../a"
-
-    D.setCurrentDirectory ".."
-
     eitherStagingArea @?= Left "Can't stage file or directory outside of the repository: ../a"
+
+testUnstagePathOutsideOfRepo :: Assertion
+testUnstagePathOutsideOfRepo = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherStagingArea <- runEitherT $ H.unstage "../a"
+    eitherStagingArea @?= Left "Can't unstage file or directory outside of the repository: ../a"
 
 testStatusCase1 :: Assertion
 testStatusCase1 = do
@@ -460,7 +516,7 @@ testInitTwiceInSameDirectory = do
     eitherInit2 <- runEitherT $ H.init (Just Quiet)
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
-    assertBool "Error: command should fail" (isLeft eitherInit2)
+    assertBool "Fatal: command should fail" (isLeft eitherInit2)
 
 testInitAgainInSubdir :: Assertion
 testInitAgainInSubdir = do
@@ -470,12 +526,12 @@ testInitAgainInSubdir = do
     eitherInit2 <- runEitherT $ H.init (Just Quiet)
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
-    assertBool "Error: command should fail" (isLeft eitherInit2)
+    eitherInit2 @?= Left "Fatal: directory is or is subdirectory of another horse-control repo"
 
     D.setCurrentDirectory ".."
 
-testNoRepo :: EitherT Error IO a -> Assertion
-testNoRepo = (=<<) ((@?=) True . isLeft) . runEitherT
+testNoRepo :: (Eq a, Show a) => EitherT Error IO a -> Assertion
+testNoRepo = (=<<) ((@?=) $ Left "Fatal: Not a horse repository (or any of the ancestor directories).") . runEitherT
 
 testNoRepoStatus :: Assertion
 testNoRepoStatus = testNoRepo $ H.status (Just Quiet)
@@ -836,6 +892,17 @@ testShowFromSubdir = do
 
     D.setCurrentDirectory ".."
 
+testShowNoArg :: Assertion
+testShowNoArg = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit <- runEitherT noargCommit
+
+    eitherShownCommit <- runEitherT $ H.show Nothing (Just Quiet)
+    eitherShownCommit @?= eitherCommit
+
 testLogFromSubdir :: Assertion
 testLogFromSubdir = do
     runEitherT $ H.init (Just Quiet)
@@ -888,7 +955,7 @@ testCommitAmend = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
+    eitherCommit <- runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
 
     ----------------
 
@@ -898,6 +965,7 @@ testCommitAmend = do
 
     length log @?= 1
     let squashedCommit = head log
+    eitherCommit @?= Right squashedCommit
 
     assertFieldEqual firstCommit squashedCommit author
     assertFieldEqual firstCommit squashedCommit date
@@ -929,6 +997,18 @@ testCommitAmend = do
 
     assertBool "Hashes should not be equal."
         (hash squashedCommit /= hash firstCommit)
+
+testCommitAmendNoPreviousCommits :: Assertion
+testCommitAmendNoPreviousCommits = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit <- runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
+
+    eitherCommit @?= Left "Fatal: cannot amend when no commits have been made."
 
 testCommitAmendFromSubdir :: Assertion
 testCommitAmendFromSubdir = do
@@ -1201,7 +1281,8 @@ testUnstage = do
     firstStatus <- getStatus
     firstStatus @?= Status (StagingArea ["a"] [] []) []
 
-    runEitherT $ H.unstage "a"
+    eitherStagingArea <- runEitherT $ H.unstage "a"
+    eitherStagingArea @?= Right (StagingArea [] [] [])
 
     secondStatus <- getStatus
     secondStatus @?= Status (StagingArea [] [] []) ["a"]
@@ -1267,7 +1348,7 @@ testCommitNoStagedFiles = do
 
     eitherCommit <- runEitherT noargCommit
 
-    assertBool "Error: shouldn't be able to commit with empty staging area." (isLeft eitherCommit)
+    eitherCommit @?= Left "Fatal: can't commit with an empty staging area."
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= (Right $ Status (StagingArea [] [] []) ["a"])
@@ -1379,7 +1460,7 @@ testCheckoutBadTruncatedHash1 = do
 
     eitherCheckoutResult <- runEitherT $ H.checkout "" (Just Quiet)
 
-    assertBool "Loading empty hash should fail." (isLeft eitherCheckoutResult)
+    eitherCheckoutResult @?= Left "Fatal: can't untruncate the empty hash."
 
 testCheckoutBadTruncatedHash2 :: Assertion
 testCheckoutBadTruncatedHash2 = do
@@ -1393,7 +1474,7 @@ testCheckoutBadTruncatedHash2 = do
     -- unlikely that this will be the actual hash
     eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" (Just Quiet)
 
-    assertBool "Loading bad hash should fail." (isLeft eitherCheckoutResult)
+    eitherCheckoutResult @?= Left "Fatal: truncated hash does not match any stored hashes"
 
 -- always hashes to "aaaaaaaaa..." (40 'a's)
 mockHasher1 :: CommitHasher
@@ -1422,7 +1503,7 @@ testCheckoutCollidingTruncatedHashes = do
 
     eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') (Just Quiet)
 
-    assertBool "Committing with a colliding truncated hash should fail." (isLeft eitherCheckoutSuccess)
+    eitherCheckoutSuccess @?= Left "Fatal: multiple hashes match specified truncated hash"
 
 testCheckoutRelativeSyntaxCaret :: Assertion
 testCheckoutRelativeSyntaxCaret = do
@@ -1858,8 +1939,88 @@ testIgnoreMultipleTimes = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
-tests :: TestTree
-tests = testGroup "unit tests"
+testConfigFirstTime :: Assertion
+testConfigFirstTime = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
+    H.configPath >>= D.removeFile
+
+    eitherConfig <- runEitherT $ H.config (Just "x") (Just "y")
+    eitherConfig @?= Right (Config (UserInfo "x" "y"))
+
+    assertBool "`config` should not fail" (isRight eitherPreviousConfig)
+    let previousConfig = fromRight undefined eitherPreviousConfig
+    let previousUserInfo = userInfo previousConfig
+    void . runEitherT $ H.config (Just $ name previousUserInfo) (Just $ email previousUserInfo)
+
+testConfigFirstTimeNoParams :: Assertion
+testConfigFirstTimeNoParams = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
+    H.configPath >>= D.removeFile
+
+    eitherConfig <- runEitherT $ H.config Nothing Nothing
+    eitherConfig @?= Right (Config (UserInfo Default.def Default.def))
+
+    assertBool "`config` should not fail" (isRight eitherPreviousConfig)
+    let previousConfig = fromRight undefined eitherPreviousConfig
+    let previousUserInfo = userInfo previousConfig
+    void . runEitherT $ H.config (Just $ name previousUserInfo) (Just $ email previousUserInfo)
+
+testConfigNotFirstTime :: Assertion
+testConfigNotFirstTime = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
+    H.configPath >>= D.removeFile
+
+    eitherConfig <- runEitherT $ H.config (Just "x") (Just "y")
+    eitherConfig @?= Right (Config (UserInfo "x" "y"))
+
+    eitherConfig2 <- runEitherT $ H.config (Just "x'") (Just "y'")
+    eitherConfig2 @?= Right (Config (UserInfo "x'" "y'"))
+
+    eitherConfig3 <- runEitherT $ H.config (Just "x''") Nothing
+    eitherConfig3 @?= Right (Config (UserInfo "x''" "y'"))
+
+    assertBool "`config` should not fail" (isRight eitherPreviousConfig)
+    let previousConfig = fromRight undefined eitherPreviousConfig
+    let previousUserInfo = userInfo previousConfig
+    void . runEitherT $ H.config (Just $ name previousUserInfo) (Just $ email previousUserInfo)
+
+testNoRepoConfig :: Assertion
+testNoRepoConfig = do
+    eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
+    H.configPath >>= D.removeFile
+
+    eitherConfig <- runEitherT $ H.config (Just "x") (Just "y")
+    eitherConfig @?= Right (Config (UserInfo "x" "y"))
+
+    assertBool "`config` should not fail" (isRight eitherPreviousConfig)
+    let previousConfig = fromRight undefined eitherPreviousConfig
+    let previousUserInfo = userInfo previousConfig
+    void . runEitherT $ H.config (Just $ name previousUserInfo) (Just $ email previousUserInfo)
+
+testIgnorePathOutsideOfRepo :: Assertion
+testIgnorePathOutsideOfRepo = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherUnit <- runEitherT $ H.ignore "../a"
+
+    eitherUnit @?= Left "Can't ignore file or directory outside of the repository: ../a"
+
+testUngnorePathOutsideOfRepo :: Assertion
+testUngnorePathOutsideOfRepo = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherUnit <- runEitherT $ H.unignore "../a"
+
+    eitherUnit @?= Left "Can't unignore file or directory outside of the repository: ../a"
+
+commandTests :: TestTree
+commandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
         "Testing command `status` run without a repo"
         (runTest testNoRepoStatus)
@@ -1891,6 +2052,9 @@ tests = testGroup "unit tests"
         "Testing command `unignore` run without a repo"
         (runTest testNoRepoUnignore)
     , testCase
+        "Testing command `config` run without a repo"
+        (runTest testNoRepoConfig)
+    , testCase
         "Testing `horse init`"
         (runTest testInit)
     , testCase
@@ -1911,6 +2075,12 @@ tests = testGroup "unit tests"
     , testCase
         "Testing `horse log` (edge case 3)"
         (runTest testLogEdgeCase3)
+    , testCase
+        "Testing `horse log` (edge case 4)"
+        (runTest testLogEdgeCase4)
+    , testCase
+        "Testing `horse log` (edge case 5)"
+        (runTest testLogTooFarBackSyntax)
     , testCase
         "Testing command `stage`"
         (runTest testStage)
@@ -1990,6 +2160,9 @@ tests = testGroup "unit tests"
         "Testing executing command `commit --amend` from a subdirectory"
         (runTest testCommitAmendFromSubdir)
     , testCase
+        "Testing executing command `commit --amend` with no previous commits"
+        (runTest testCommitAmendNoPreviousCommits)
+    , testCase
         "Testing executing command `squash`"
         (runTest testSquash)
     , testCase
@@ -2010,6 +2183,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `unstage` (edge case 2)"
         (runTest testUnstageUnstagedFile)
+    , testCase
+        "Testing command `unstage` (edge case 3)"
+        (runTest testUnstagePathOutsideOfRepo)
     , testCase
         "Testing command `unstage` when given a directory"
         (runTest testUnstageDirectory)
@@ -2070,7 +2246,99 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `unignore` from a subdirectory"
         (runTest testUnignoreGivenDirectoryFromSubdir)
+    , testCase
+        "Testing command `config` (no previously existing config file)"
+        (runTest testConfigFirstTime)
+    , testCase
+        "Testing command `config` (previously existing config file)"
+        (runTest testConfigNotFirstTime)
+    , testCase
+        "Testing command `config` (first time, no params supplied)"
+        (runTest testConfigFirstTimeNoParams)
+    , testCase
+        "Testing command `ignore` given a path outside of the repo"
+        (runTest testIgnorePathOutsideOfRepo)
+    , testCase
+        "Testing command `unignore` given a path outside of the repo"
+        (runTest testUngnorePathOutsideOfRepo)
+    , testCase
+        "Testing command `show` given no arguments"
+        (runTest testShowNoArg)
+    , testCase
+        "Testing failure of combining ^ and ~ syntax"
+        (runTest testRelativeSyntaxErrorCase)
     ]
+
+testNoRepoRepoRoot :: Assertion
+testNoRepoRepoRoot = do
+    eitherRepoRoot <- runEitherT H.repoRoot
+    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
+
+testRepoRootNoAncestors :: Assertion
+testRepoRootNoAncestors = do
+    originalDir <- D.getCurrentDirectory
+    D.setCurrentDirectory "/"
+
+    eitherRepoRoot <- runEitherT H.repoRoot
+    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
+
+    D.setCurrentDirectory originalDir
+
+testDestructivelyCreateDirectory :: Assertion
+testDestructivelyCreateDirectory = do
+    D.createDirectory "x"
+    createFileWithContents "x/a" "a"
+    H.destructivelyCreateDirectory "x"
+
+    contents <- D.getDirectoryContents "."
+    contents @?= [".", "..", "x"]
+
+testGetDirectoryContentsRecursiveSafe :: Assertion
+testGetDirectoryContentsRecursiveSafe = do
+    contents <- H.getDirectoryContentsRecursiveSafe "x"
+    contents @?= []
+
+testDropPrefix :: Assertion
+testDropPrefix = do
+    H.dropPrefix ("abc" :: String) ("ab"  :: String) @?= Nothing
+    H.dropPrefix ("abc" :: String) ("abc" :: String) @?= Just []
+    H.dropPrefix ("abc" :: String) ("axc" :: String) @?= Nothing
+
+filesystemTests :: TestTree
+filesystemTests = testGroup "unit tests (Horse.Filesystem)"
+    [ testCase
+        "Testing `repoRoot` not in a repo"
+        (runTest testNoRepoRepoRoot)
+    , testCase
+        "Testing `repoRoot` with no ancestors"
+        (runTest testRepoRootNoAncestors)
+    , testCase
+        "Testing `destructivelyCreateDirectory`"
+        (runTest testDestructivelyCreateDirectory)
+    , testCase
+        "Testing `getDirectoryContentsRecursiveSafe`"
+        (runTest testGetDirectoryContentsRecursiveSafe)
+    , testCase
+        "Testing `dropPrefix`"
+        (runTest testDropPrefix)
+    ]
+
+testLoadCommitErrorCase :: Assertion
+testLoadCommitErrorCase = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherCommit <- runEitherT $ H.loadCommit "xyz"
+    eitherCommit @?= Left "Could not fetch commit for key \"xyz\"."
+
+ioTests :: TestTree
+ioTests = testGroup "unit tests (Horse.IO)"
+    [ testCase
+        "Testing `loadCommit` error case"
+        (runTest testLoadCommitErrorCase)
+    ]
+
+tests :: TestTree
+tests = testGroup "All tests" [commandTests, filesystemTests, ioTests]
 
 main :: IO ()
 main = defaultMain tests

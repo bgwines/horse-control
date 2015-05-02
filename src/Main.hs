@@ -183,7 +183,7 @@ run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- case cmd of
         Version            -> fmap Right $ putStrLn "0.1.0.2"
-        Config name email  -> fmap Right $ Commands.config name email
+        Config name email  -> runEitherT $ void $ Commands.config name email
         Init v             -> runEitherT $ Commands.init v
         Checkout ref v     -> runEitherT $ Commands.checkout ref v
         Show ref           -> runEitherT $ void $ Commands.show ref Nothing

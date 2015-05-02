@@ -171,11 +171,5 @@ loadIgnoredPaths = map (ByteString8.unpack) <$> loadFromFile HC.ignoredPathsPath
 
 -- | Loads the hashes of all commits ever made in the repo.
 writeIgnoredPaths :: [FilePath] -> EitherT Error IO ()
-writeIgnoredPaths paths
-    = loadIgnoredPaths
-    >>= ( liftIO
-        . writeToFile HC.ignoredPathsPath
-        . map ByteString8.pack
-        . nub
-        . (++) paths )
-
+writeIgnoredPaths
+    = liftIO . writeToFile HC.ignoredPathsPath . map ByteString8.pack

@@ -18,6 +18,7 @@ module Horse.Commands
 , Horse.Commands.show
 , Horse.Commands.log
 , Horse.Commands.ignore
+, Horse.Commands.unignore
 , Horse.Commands.listIgnoredPaths
 ) where
 
@@ -181,7 +182,7 @@ status maybeVerbosity = do
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
             diffWithHEAD Nothing
-                >>= right . (getUnstagedFilesFromDiff) stagedFiles
+                >>= right . sort . (getUnstagedFilesFromDiff) stagedFiles
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
         getUnstagedFilesFromDiff stagedFiles
@@ -200,9 +201,27 @@ ignore path = do
     when (isPrefixOf ".." relativePath) $ do
         left $ "Can't stage file or directory outside of the repository: " ++ path
 
-    HIO.writeIgnoredPaths [relativePath]
+    HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . nub . (:) relativePath
 
     liftIO $ D.setCurrentDirectory userDirectory
+
+unignore :: String -> EitherT Error IO ()
+unignore path = do
+    -- TODO: figure out how to share this
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
+    -- relative to root of repo
+    relativePath <- HF.relativizePath path userDirectory
+    when (isPrefixOf ".." relativePath) $ do
+        left $ "Can't stage file or directory outside of the repository: " ++ path
+
+    HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . removeSubdirsOf relativePath
+
+    liftIO $ D.setCurrentDirectory userDirectory
+    where
+        removeSubdirsOf :: FilePath -> [FilePath] -> [FilePath]
+        removeSubdirsOf path = filter (not . isPrefixOf path)
 
 listIgnoredPaths :: Maybe Verbosity -> EitherT Error IO [FilePath]
 listIgnoredPaths maybeVerbosity = do

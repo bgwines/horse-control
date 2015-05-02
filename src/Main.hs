@@ -15,7 +15,7 @@ import Data.Either.Combinators (isLeft, fromLeft)
 
 import Options.Applicative
 
-import Data.Default as Default
+import Data.Default (def)
 
 -- | Schema for arguments to exposed commands
 data Command
@@ -31,6 +31,7 @@ data Command
     | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
     | Squash String
     | Ignore String
+    | Unignore String
     | ListIgnored (Maybe Types.Verbosity)
     deriving (Show)
 
@@ -110,6 +111,9 @@ parseSquash = Squash <$> (argument str $ metavar "REF")
 parseIgnore :: Parser Command
 parseIgnore = Ignore <$> (argument str $ metavar "PATH")
 
+parseUnignore :: Parser Command
+parseUnignore = Ignore <$> (argument str $ metavar "PATH")
+
 parseListIgnored :: Parser Command
 parseListIgnored = ListIgnored <$> verbosityOption
 
@@ -127,6 +131,7 @@ parseCommand = subparser
     <> command "log"      (parseLog      `withInfo` logHelpMessage)
     <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
     <> command "ignore"   (parseIgnore   `withInfo` ignoreHelpMessage)
+    <> command "unignore" (parseUnignore `withInfo` unignoreHelpMessage)
     <> command "listIgnored" (parseListIgnored `withInfo` listIgnoredHelpMessage)
         where
         initHelpMessage :: String
@@ -165,6 +170,9 @@ parseCommand = subparser
         ignoreHelpMessage :: String
         ignoreHelpMessage = "Ignore a file or directory"
 
+        unignoreHelpMessage :: String
+        unignoreHelpMessage = "Unignore a file or directory"
+
         listIgnoredHelpMessage :: String
         listIgnoredHelpMessage = "List ignored files"
 
@@ -183,13 +191,13 @@ run cmd = do
         Unstage path       -> runEitherT $ void $ Commands.unstage path
         Log ref n v        -> runEitherT $ void $ Commands.log ref n v
         Status v           -> runEitherT $ void $ Commands.status v
-        Commit msg False v -> runEitherT $ void $ Commands.commit Default.def msg v
-        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend Default.def msg v
-        Squash ref         -> runEitherT $ void $ Commands.squash Default.def ref
+        Commit msg False v -> runEitherT $ void $ Commands.commit def msg v
+        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend def msg v
+        Squash ref         -> runEitherT $ void $ Commands.squash def ref
         Ignore path        -> runEitherT $ Commands.ignore path 
         ListIgnored v      -> runEitherT $ void $ Commands.listIgnoredPaths v
     if isLeft eitherSuccess
-        then putStrLn $ fromLeft Default.def eitherSuccess
+        then putStrLn $ fromLeft def eitherSuccess
         else return ()
 
 main :: IO ()

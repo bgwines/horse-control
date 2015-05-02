@@ -1,5 +1,4 @@
-* ignore
-* unignore
+* performance
 * -q -v
 * handle binary files / other file types (.png, etc.)
 * branches

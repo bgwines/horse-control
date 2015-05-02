@@ -504,6 +504,9 @@ testNoRepoUnstage = testNoRepo $ H.unstage Default.def
 testNoRepoIgnore :: Assertion
 testNoRepoIgnore = testNoRepo $ H.ignore Default.def
 
+testNoRepoUnignore :: Assertion
+testNoRepoUnignore = testNoRepo $ H.unignore Default.def
+
 testNoRepoListIgnored :: Assertion
 testNoRepoListIgnored = testNoRepo $ H.listIgnoredPaths (Just Quiet)
 
@@ -1779,6 +1782,52 @@ testIgnoreGivenDirectoryFromSubdir = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
+testUnignore :: Assertion
+testUnignore = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "a"
+    runEitherT $ H.unignore "a"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["a", "b"])
+
+testUnignoreGivenDirectory :: Assertion
+testUnignoreGivenDirectory = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "x"
+    D.createDirectory "x/y"
+    createFileWithContents "x/a" "1"
+    createFileWithContents "x/y/a" "1"
+    createFileWithContents "b" "1"
+
+    runEitherT $ H.ignore "x"
+    runEitherT $ H.unignore "x"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
+
+testUnignoreGivenDirectoryFromSubdir :: Assertion
+testUnignoreGivenDirectoryFromSubdir = do
+    runEitherT $ H.init (Just Quiet)
+
+    D.createDirectory "x"
+    D.createDirectory "x/y"
+    createFileWithContents "x/a" "1"
+    createFileWithContents "x/y/a" "1"
+    createFileWithContents "b" "1"
+
+    D.setCurrentDirectory "x"
+    runEitherT $ H.ignore "."
+    runEitherT $ H.unignore "."
+    D.setCurrentDirectory ".."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
 
 testStagingIgnoredFile :: Assertion
 testStagingIgnoredFile = do
@@ -1809,7 +1858,6 @@ testIgnoreMultipleTimes = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
-
 tests :: TestTree
 tests = testGroup "unit tests"
     [ testCase
@@ -1839,6 +1887,9 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `listIgnored` run without a repo"
         (runTest testNoRepoListIgnored)
+    , testCase
+        "Testing command `unignore` run without a repo"
+        (runTest testNoRepoUnignore)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -2010,6 +2061,15 @@ tests = testGroup "unit tests"
     , testCase
         "Testing command `ignore` by ignoring a file and then staging it"
         (runTest testStagingIgnoredFile)
+    , testCase
+        "Testing command `unignore`"
+        (runTest testUnignore)
+    , testCase
+        "Testing command `unignore` (given a directory)"
+        (runTest testUnignoreGivenDirectory)
+    , testCase
+        "Testing command `unignore` from a subdirectory"
+        (runTest testUnignoreGivenDirectoryFromSubdir)
     ]
 
 main :: IO ()

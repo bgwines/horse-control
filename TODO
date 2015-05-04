@@ -13,3 +13,21 @@
 * STM
 * networking
 * multithreading
+
+testing/ [master] > horse ignore x
+testing/ [master] > hs
+Staged changes:
+StagingArea {adds = [], mods = [], dels = []}
+
+Unstaged changes:
+[]
+testing/ [master] > rm x
+testing/ [master] > hs
+Staged changes:
+StagingArea {adds = [], mods = [], dels = []}
+
+Unstaged changes:
+["x"]
+testing/ [master] > horse ignore --list
+["x"]
+testing/ [master] >

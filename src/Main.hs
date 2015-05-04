@@ -30,9 +30,8 @@ data Command
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
     | Squash String
-    | Ignore String
+    | Ignore (Maybe String) Bool (Maybe Types.Verbosity)
     | Unignore String
-    | ListIgnored (Maybe Types.Verbosity)
     deriving (Show)
 
 verbosityOption :: Parser (Maybe Types.Verbosity)
@@ -109,13 +108,13 @@ parseSquash :: Parser Command
 parseSquash = Squash <$> (argument str $ metavar "REF")
 
 parseIgnore :: Parser Command
-parseIgnore = Ignore <$> (argument str $ metavar "PATH")
+parseIgnore = Ignore
+    <$> (optional $ argument str $ metavar "PATH")
+    <*> switch (long "list" <> help "List ignored paths" )
+    <*> verbosityOption
 
 parseUnignore :: Parser Command
-parseUnignore = Ignore <$> (argument str $ metavar "PATH")
-
-parseListIgnored :: Parser Command
-parseListIgnored = ListIgnored <$> verbosityOption
+parseUnignore = Unignore <$> (argument str $ metavar "PATH")
 
 parseCommand :: Parser Command
 parseCommand = subparser
@@ -132,7 +131,6 @@ parseCommand = subparser
     <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
     <> command "ignore"   (parseIgnore   `withInfo` ignoreHelpMessage)
     <> command "unignore" (parseUnignore `withInfo` unignoreHelpMessage)
-    <> command "listIgnored" (parseListIgnored `withInfo` listIgnoredHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -173,29 +171,27 @@ parseCommand = subparser
         unignoreHelpMessage :: String
         unignoreHelpMessage = "Unignore a file or directory"
 
-        listIgnoredHelpMessage :: String
-        listIgnoredHelpMessage = "List ignored files"
-
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 run :: Command -> IO ()
 run cmd = do
-    eitherSuccess <- case cmd of
-        Version            -> fmap Right $ putStrLn "0.1.0.2"
-        Config name email  -> runEitherT $ void $ Commands.config name email
-        Init v             -> runEitherT $ Commands.init v
-        Checkout ref v     -> runEitherT $ Commands.checkout ref v
-        Show ref           -> runEitherT $ void $ Commands.show ref Nothing
-        Stage path         -> runEitherT $ void $ Commands.stage path
-        Unstage path       -> runEitherT $ void $ Commands.unstage path
-        Log ref n v        -> runEitherT $ void $ Commands.log ref n v
-        Status v           -> runEitherT $ void $ Commands.status v
-        Commit msg False v -> runEitherT $ void $ Commands.commit def msg v
-        Commit msg True v  -> runEitherT $ void $ Commands.commitAmend def msg v
-        Squash ref         -> runEitherT $ void $ Commands.squash def ref
-        Ignore path        -> runEitherT $ Commands.ignore path 
-        ListIgnored v      -> runEitherT $ void $ Commands.listIgnoredPaths v
+    eitherSuccess <- runEitherT $ case cmd of
+        Version                 -> liftIO . putStrLn $ "0.1.0.0"
+        Init v                  -> Commands.init v
+        Checkout ref v          -> Commands.checkout ref v
+        Config name email       -> void $ Commands.config name email
+        Show ref                -> void $ Commands.show ref Nothing
+        Stage path              -> void $ Commands.stage path
+        Unstage path            -> void $ Commands.unstage path
+        Log ref n v             -> void $ Commands.log ref n v
+        Status v                -> void $ Commands.status v
+        Commit msg False v      -> void $ Commands.commit def msg v
+        Commit msg True v       -> void $ Commands.commitAmend def msg v
+        Squash ref              -> void $ Commands.squash def ref
+        Ignore _ True v         -> void $ Commands.listIgnoredPaths v
+        Ignore (Just p) False _ -> void $ Commands.ignore p 
+        Unignore p              -> void $ Commands.unignore p
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess
         else return ()

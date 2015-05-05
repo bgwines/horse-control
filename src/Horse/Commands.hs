@@ -181,14 +181,18 @@ status maybeVerbosity = do
         loadUnstagedFiles :: EitherT Error IO [FilePath]
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
+            ignoredPaths <- HIO.loadIgnoredPaths
             diffWithHEAD Nothing
-                >>= right . sort . (getUnstagedFilesFromDiff) stagedFiles
+                >>= right . sort . getUnstagedFilesFromDiff (stagedFiles ++ ignoredPaths)
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
-        getUnstagedFilesFromDiff stagedFiles
-            = filter (not . (flip elem $ stagedFiles))
+        getUnstagedFilesFromDiff stagedOrIgnoredFiles
+            = filter (\x -> none (isPrefixOf x) $ stagedOrIgnoredFiles)
             . map FD.comp
             . FD.filediffs
+
+        none :: (a -> Bool) -> [a] -> Bool
+        none f = not . any f
 
 ignore :: String -> EitherT Error IO ()
 ignore path = do
@@ -268,7 +272,6 @@ stage path = do
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    -- tail for prefixing '/' coming from `dropPrefix`
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do

@@ -1,33 +1,26 @@
-* ResourceT
-* performance
-* -q -v
-* handle binary files / other file types (.png, etc.)
-* branches
-    * cherry-pick
-    * merging
-    * "current" branch
-    * rebase
-* diff
-* writerT
-* revert
-* STM
-* networking
-* multithreading
+API
+    * -q -v
+    * branches
+        * cherry-pick
+        * merging
+        * "current" branch
+        * rebase
+    * diff
+    * (un)ignore -> ~(un)track?
+    * revert
+    * networking
 
-testing/ [master] > horse ignore x
-testing/ [master] > hs
-Staged changes:
-StagingArea {adds = [], mods = [], dels = []}
+Code
+    * ResourceT
+    * writerT?
+    * STM
+    * multithreading
 
-Unstaged changes:
-[]
-testing/ [master] > rm x
-testing/ [master] > hs
-Staged changes:
-StagingArea {adds = [], mods = [], dels = []}
+UX
+    * performance
+    * handle binary files / other file types (.png, etc.)
 
-Unstaged changes:
-["x"]
-testing/ [master] > horse ignore --list
-["x"]
-testing/ [master] >
+Bugs
+    * stage, then ignore?
+    * ignore, then stage?
+    * stage .horse

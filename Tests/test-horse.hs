@@ -2019,6 +2019,39 @@ testUngnorePathOutsideOfRepo = do
 
     eitherUnit @?= Left "Can't unignore file or directory outside of the repository: ../a"
 
+testRemovingIgnoredFile :: Assertion
+testRemovingIgnoredFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    runEitherT $ H.ignore "a"
+
+    D.removeFile "a"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) [])
+
+testStageCurrentDirectoryRemovedFile :: Assertion
+testStageCurrentDirectoryRemovedFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    D.removeFile "a"
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
+
+    runEitherT $ H.stage "."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] ["a"]) [])
+
 commandTests :: TestTree
 commandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
@@ -2087,12 +2120,15 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `stage` (edge case 1)"
         (runTest testStagePathOutsideOfRepo)
-     , testCase
-         "Testing command `stage` (edge case 1)"
-         (runTest testStageNonexistentFile)
-     , testCase
-         "Testing command `stage` (edge case 2)"
-         (runTest testStageNonexistentDirectory)
+    , testCase
+        "Testing command `stage` (edge case 1)"
+        (runTest testStageNonexistentFile)
+    , testCase
+        "Testing command `stage` (edge case 2)"
+        (runTest testStageNonexistentDirectory)
+    , testCase
+        "Testing command `stage` (edge case 3)."
+        (runTest testStageCurrentDirectoryRemovedFile)
     , testCase
         "Testing command `stage` when given a directory"
         (runTest testStageDirectory)
@@ -2267,6 +2303,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing failure of combining ^ and ~ syntax"
         (runTest testRelativeSyntaxErrorCase)
+    , testCase
+        "Testing command `ignore` when removing a file."
+        (runTest testRemovingIgnoredFile)
     ]
 
 testNoRepoRepoRoot :: Assertion

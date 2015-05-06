@@ -21,9 +21,9 @@ module Horse.IO
 , loadConfig
 , writeConfig
 
--- * ignore
-, loadIgnoredPaths
-, writeIgnoredPaths
+-- * untracking
+, loadUntrackedPaths
+, writeUntrackedPaths
 ) where
 
 -- imports
@@ -163,12 +163,12 @@ writeConfig config = do
     configPath <- HC.configPath
     ByteString.writeFile configPath (Serialize.encode config)
 
--- * ignore
+-- * untracking
 
-loadIgnoredPaths :: EitherT Error IO [FilePath]
-loadIgnoredPaths = map (ByteString8.unpack) <$> loadFromFile HC.ignoredPathsPath
+loadUntrackedPaths :: EitherT Error IO [FilePath]
+loadUntrackedPaths = map (ByteString8.unpack) <$> loadFromFile HC.untrackedPathsPath
 
 -- | Loads the hashes of all commits ever made in the repo.
-writeIgnoredPaths :: [FilePath] -> EitherT Error IO ()
-writeIgnoredPaths
-    = liftIO . writeToFile HC.ignoredPathsPath . map ByteString8.pack
+writeUntrackedPaths :: [FilePath] -> EitherT Error IO ()
+writeUntrackedPaths
+    = liftIO . writeToFile HC.untrackedPathsPath . map ByteString8.pack

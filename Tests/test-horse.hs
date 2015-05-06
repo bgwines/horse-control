@@ -557,14 +557,14 @@ testNoRepoSquash = testNoRepo $ H.squash Default.def Default.def
 testNoRepoUnstage :: Assertion
 testNoRepoUnstage = testNoRepo $ H.unstage Default.def
 
-testNoRepoIgnore :: Assertion
-testNoRepoIgnore = testNoRepo $ H.ignore Default.def
+testNoRepoUntrack :: Assertion
+testNoRepoUntrack = testNoRepo $ H.untrack Default.def
 
-testNoRepoUnignore :: Assertion
-testNoRepoUnignore = testNoRepo $ H.unignore Default.def
+testNoRepoRetrack :: Assertion
+testNoRepoRetrack = testNoRepo $ H.retrack Default.def
 
-testNoRepoListIgnored :: Assertion
-testNoRepoListIgnored = testNoRepo $ H.listIgnoredPaths (Just Quiet)
+testNoRepoListUntracked :: Assertion
+testNoRepoListUntracked = testNoRepo $ H.listUntrackedPaths (Just Quiet)
 
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
@@ -1819,20 +1819,20 @@ testCheckoutRelativeSyntaxTildeZero = do
             (not bExists) @? "`b` should not exist."
             return ()
 
-testIgnore :: Assertion
-testIgnore = do
+testUntrack :: Assertion
+testUntrack = do
     runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "a"
+    runEitherT $ H.untrack "a"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
-testIgnoreGivenDirectory :: Assertion
-testIgnoreGivenDirectory = do
+testUntrackGivenDirectory :: Assertion
+testUntrackGivenDirectory = do
     runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "x"
@@ -1841,13 +1841,13 @@ testIgnoreGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "x"
+    runEitherT $ H.untrack "x"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
-testIgnoreGivenDirectoryFromSubdir :: Assertion
-testIgnoreGivenDirectoryFromSubdir = do
+testUntrackGivenDirectoryFromSubdir :: Assertion
+testUntrackGivenDirectoryFromSubdir = do
     runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "x"
@@ -1857,27 +1857,27 @@ testIgnoreGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.ignore "."
+    runEitherT $ H.untrack "."
     D.setCurrentDirectory ".."
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
-testUnignore :: Assertion
-testUnignore = do
+testRetrack :: Assertion
+testRetrack = do
     runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "a"
-    runEitherT $ H.unignore "a"
+    runEitherT $ H.untrack "a"
+    runEitherT $ H.retrack "a"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a", "b"])
 
-testUnignoreGivenDirectory :: Assertion
-testUnignoreGivenDirectory = do
+testRetrackGivenDirectory :: Assertion
+testRetrackGivenDirectory = do
     runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "x"
@@ -1886,14 +1886,14 @@ testUnignoreGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "x"
-    runEitherT $ H.unignore "x"
+    runEitherT $ H.untrack "x"
+    runEitherT $ H.retrack "x"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
 
-testUnignoreGivenDirectoryFromSubdir :: Assertion
-testUnignoreGivenDirectoryFromSubdir = do
+testRetrackGivenDirectoryFromSubdir :: Assertion
+testRetrackGivenDirectoryFromSubdir = do
     runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "x"
@@ -1903,28 +1903,28 @@ testUnignoreGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.ignore "."
-    runEitherT $ H.unignore "."
+    runEitherT $ H.untrack "."
+    runEitherT $ H.retrack "."
     D.setCurrentDirectory ".."
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
 
-testStagingIgnoredFile :: Assertion
-testStagingIgnoredFile = do
+testStagingUntrackedFile :: Assertion
+testStagingUntrackedFile = do
     runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "b"
+    runEitherT $ H.untrack "b"
     runEitherT $ H.stage "b"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
 
-testIgnoreMultipleTimes :: Assertion
-testIgnoreMultipleTimes = do
+testUntrackMultipleTimes :: Assertion
+testUntrackMultipleTimes = do
     runEitherT $ H.init (Just Quiet)
 
     D.createDirectory "x"
@@ -1933,8 +1933,8 @@ testIgnoreMultipleTimes = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.ignore "x/a"
-    runEitherT $ H.ignore "x/y"
+    runEitherT $ H.untrack "x/a"
+    runEitherT $ H.untrack "x/y"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
@@ -2003,31 +2003,31 @@ testNoRepoConfig = do
     let previousUserInfo = userInfo previousConfig
     void . runEitherT $ H.config (Just $ name previousUserInfo) (Just $ email previousUserInfo)
 
-testIgnorePathOutsideOfRepo :: Assertion
-testIgnorePathOutsideOfRepo = do
+testUntrackPathOutsideOfRepo :: Assertion
+testUntrackPathOutsideOfRepo = do
     runEitherT $ H.init (Just Quiet)
 
-    eitherUnit <- runEitherT $ H.ignore "../a"
+    eitherUnit <- runEitherT $ H.untrack "../a"
 
-    eitherUnit @?= Left "Can't ignore file or directory outside of the repository: ../a"
+    eitherUnit @?= Left "Can't untrack file or directory outside of the repository: ../a"
 
 testUngnorePathOutsideOfRepo :: Assertion
 testUngnorePathOutsideOfRepo = do
     runEitherT $ H.init (Just Quiet)
 
-    eitherUnit <- runEitherT $ H.unignore "../a"
+    eitherUnit <- runEitherT $ H.retrack "../a"
 
-    eitherUnit @?= Left "Can't unignore file or directory outside of the repository: ../a"
+    eitherUnit @?= Left "Can't retrack file or directory outside of the repository: ../a"
 
-testRemovingIgnoredFile :: Assertion
-testRemovingIgnoredFile = do
+testRemovingUntrackedFile :: Assertion
+testRemovingUntrackedFile = do
     runEitherT $ H.init (Just Quiet)
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    runEitherT $ H.ignore "a"
+    runEitherT $ H.untrack "a"
 
     D.removeFile "a"
 
@@ -2076,14 +2076,14 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing command `squash` run without a repo"
         (runTest testNoRepoSquash)
     , testCase
-        "Testing command `ignore` run without a repo"
-        (runTest testNoRepoIgnore)
+        "Testing command `untrack` run without a repo"
+        (runTest testNoRepoUntrack)
     , testCase
-        "Testing command `listIgnored` run without a repo"
-        (runTest testNoRepoListIgnored)
+        "Testing command `untrack --list` run without a repo"
+        (runTest testNoRepoListUntracked)
     , testCase
-        "Testing command `unignore` run without a repo"
-        (runTest testNoRepoUnignore)
+        "Testing command `retrack` run without a repo"
+        (runTest testNoRepoRetrack)
     , testCase
         "Testing command `config` run without a repo"
         (runTest testNoRepoConfig)
@@ -2259,29 +2259,29 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing command `checkout` given relative hash (edge case 1)"
         (runTest testCheckoutRelativeSyntaxTildeZero)
     , testCase
-        "Testing command `ignore`"
-        (runTest testIgnore)
+        "Testing command `untrack`"
+        (runTest testUntrack)
     , testCase
-        "Testing command `ignore` multiple times"
-        (runTest testIgnoreMultipleTimes)
+        "Testing command `untrack` multiple times"
+        (runTest testUntrackMultipleTimes)
     , testCase
-        "Testing command `ignore` (given a directory)"
-        (runTest testIgnoreGivenDirectory)
+        "Testing command `untrack` (given a directory)"
+        (runTest testUntrackGivenDirectory)
     , testCase
-        "Testing command `ignore` from a subdirectory"
-        (runTest testIgnoreGivenDirectoryFromSubdir)
+        "Testing command `untrack` from a subdirectory"
+        (runTest testUntrackGivenDirectoryFromSubdir)
     , testCase
-        "Testing command `ignore` by ignoring a file and then staging it"
-        (runTest testStagingIgnoredFile)
+        "Testing command `untrack` by untracking a file and then staging it"
+        (runTest testStagingUntrackedFile)
     , testCase
-        "Testing command `unignore`"
-        (runTest testUnignore)
+        "Testing command `retrack`"
+        (runTest testRetrack)
     , testCase
-        "Testing command `unignore` (given a directory)"
-        (runTest testUnignoreGivenDirectory)
+        "Testing command `retrack` (given a directory)"
+        (runTest testRetrackGivenDirectory)
     , testCase
-        "Testing command `unignore` from a subdirectory"
-        (runTest testUnignoreGivenDirectoryFromSubdir)
+        "Testing command `retrack` from a subdirectory"
+        (runTest testRetrackGivenDirectoryFromSubdir)
     , testCase
         "Testing command `config` (no previously existing config file)"
         (runTest testConfigFirstTime)
@@ -2292,10 +2292,10 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing command `config` (first time, no params supplied)"
         (runTest testConfigFirstTimeNoParams)
     , testCase
-        "Testing command `ignore` given a path outside of the repo"
-        (runTest testIgnorePathOutsideOfRepo)
+        "Testing command `untrack` given a path outside of the repo"
+        (runTest testUntrackPathOutsideOfRepo)
     , testCase
-        "Testing command `unignore` given a path outside of the repo"
+        "Testing command `retrack` given a path outside of the repo"
         (runTest testUngnorePathOutsideOfRepo)
     , testCase
         "Testing command `show` given no arguments"
@@ -2304,8 +2304,8 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing failure of combining ^ and ~ syntax"
         (runTest testRelativeSyntaxErrorCase)
     , testCase
-        "Testing command `ignore` when removing a file."
-        (runTest testRemovingIgnoredFile)
+        "Testing command `untrack` when removing a file."
+        (runTest testRemovingUntrackedFile)
     ]
 
 testNoRepoRepoRoot :: Assertion

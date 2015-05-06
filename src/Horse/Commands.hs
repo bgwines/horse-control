@@ -17,9 +17,9 @@ module Horse.Commands
 , Horse.Commands.checkout
 , Horse.Commands.show
 , Horse.Commands.log
-, Horse.Commands.ignore
-, Horse.Commands.unignore
-, Horse.Commands.listIgnoredPaths
+, Horse.Commands.untrack
+, Horse.Commands.retrack
+, Horse.Commands.listUntrackedPaths
 ) where
 
 -- imports
@@ -181,21 +181,21 @@ status maybeVerbosity = do
         loadUnstagedFiles :: EitherT Error IO [FilePath]
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
-            ignoredPaths <- HIO.loadIgnoredPaths
+            untrackedPaths <- HIO.loadUntrackedPaths
             diffWithHEAD Nothing
-                >>= right . sort . getUnstagedFilesFromDiff (stagedFiles ++ ignoredPaths)
+                >>= right . sort . getUnstagedFilesFromDiff (stagedFiles ++ untrackedPaths)
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
-        getUnstagedFilesFromDiff stagedOrIgnoredFiles
-            = filter (\x -> none (isPrefixOf x) $ stagedOrIgnoredFiles)
+        getUnstagedFilesFromDiff stagedOrUntrackedFiles
+            = filter (\x -> none (isPrefixOf x) $ stagedOrUntrackedFiles)
             . map FD.comp
             . FD.filediffs
 
         none :: (a -> Bool) -> [a] -> Bool
         none f = not . any f
 
-ignore :: String -> EitherT Error IO ()
-ignore path = do
+untrack :: String -> EitherT Error IO ()
+untrack path = do
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
@@ -203,14 +203,14 @@ ignore path = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
-        left $ "Can't ignore file or directory outside of the repository: " ++ path
+        left $ "Can't untrack file or directory outside of the repository: " ++ path
 
-    HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . nub . (:) relativePath
+    HIO.loadUntrackedPaths >>= HIO.writeUntrackedPaths . nub . (:) relativePath
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-unignore :: String -> EitherT Error IO ()
-unignore path = do
+retrack :: String -> EitherT Error IO ()
+retrack path = do
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
@@ -218,23 +218,23 @@ unignore path = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
-        left $ "Can't unignore file or directory outside of the repository: " ++ path
+        left $ "Can't retrack file or directory outside of the repository: " ++ path
 
-    HIO.loadIgnoredPaths >>= HIO.writeIgnoredPaths . removeSubdirsOf relativePath
+    HIO.loadUntrackedPaths >>= HIO.writeUntrackedPaths . removeSubdirsOf relativePath
 
     liftIO $ D.setCurrentDirectory userDirectory
     where
         removeSubdirsOf :: FilePath -> [FilePath] -> [FilePath]
         removeSubdirsOf path = filter (not . isPrefixOf path)
 
-listIgnoredPaths :: Maybe Verbosity -> EitherT Error IO [FilePath]
-listIgnoredPaths maybeVerbosity = do
+listUntrackedPaths :: Maybe Verbosity -> EitherT Error IO [FilePath]
+listUntrackedPaths maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
 
-    paths <- HIO.loadIgnoredPaths
+    paths <- HIO.loadUntrackedPaths
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -624,8 +624,8 @@ diffWithHEAD maybeFilesToDiff = do
     whenM commitsHaveBeenMade $ do
         HIO.loadHeadHash >>= checkoutToDirectory headDir
 
-    ignoredPaths <- listIgnoredPaths (Just Quiet)
-    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] ([HC.repositoryDataDir] ++ ignoredPaths)
+    untrackedPaths <- listUntrackedPaths (Just Quiet)
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] ([HC.repositoryDataDir] ++ untrackedPaths)
 
     liftIO $ D.removeDirectoryRecursive headDir
 

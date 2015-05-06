@@ -12,7 +12,7 @@ module Horse.Constants
 , commitsPath
 , configPath
 , hashesPath
-, ignoredPathsPath
+, untrackedPathsPath
 
 -- * lists
 , directories
@@ -112,8 +112,8 @@ hashesPath = repositoryDataDir </> "hashes"
 
 -- | The path to where all commits' hashes are stored (relative to root of
 --   repository).
-ignoredPathsPath :: FilePath
-ignoredPathsPath = repositoryDataDir </> "ignoredPaths"
+untrackedPathsPath :: FilePath
+untrackedPathsPath = repositoryDataDir </> "untrackedPaths"
 
 -- | The path to where the object representing user-specified
 --   configuration information is stored. Returnvalue is wrapped in
@@ -139,4 +139,4 @@ serializationPathsAndInitialContents =
     [ (headHashPath     , Serialize.encode $ (Def.def :: Hash))
     , (stagingAreaPath  , Serialize.encode $ (Def.def :: StagingArea)) 
     , (hashesPath       , Serialize.encode $ (Def.def :: [Hash]))
-    , (ignoredPathsPath , Serialize.encode $ (Def.def :: [FilePath])) ]
+    , (untrackedPathsPath , Serialize.encode $ (Def.def :: [FilePath])) ]

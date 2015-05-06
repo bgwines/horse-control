@@ -6,7 +6,7 @@ API
         * "current" branch
         * rebase
     * diff
-    * (un)ignore -> ~(un)track?
+    * (un)ignore -> retrack?
     * revert
     * networking
 
@@ -24,3 +24,4 @@ Bugs
     * stage, then ignore?
     * ignore, then stage?
     * stage .horse
+    * retrack never-untracked file

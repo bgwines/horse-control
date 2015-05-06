@@ -30,8 +30,8 @@ data Command
     | Show (Maybe String)
     | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
     | Squash String
-    | Ignore (Maybe String) Bool (Maybe Types.Verbosity)
-    | Unignore String
+    | Untrack (Maybe String) Bool (Maybe Types.Verbosity)
+    | Retrack String
     deriving (Show)
 
 verbosityOption :: Parser (Maybe Types.Verbosity)
@@ -107,14 +107,14 @@ parseVersion = pure Version
 parseSquash :: Parser Command
 parseSquash = Squash <$> (argument str $ metavar "REF")
 
-parseIgnore :: Parser Command
-parseIgnore = Ignore
+parseUntrack :: Parser Command
+parseUntrack = Untrack
     <$> (optional $ argument str $ metavar "PATH")
-    <*> switch (long "list" <> help "List ignored paths" )
+    <*> switch (long "list" <> help "List untracked paths" )
     <*> verbosityOption
 
-parseUnignore :: Parser Command
-parseUnignore = Unignore <$> (argument str $ metavar "PATH")
+parseRetrack :: Parser Command
+parseRetrack = Retrack <$> (argument str $ metavar "PATH")
 
 parseCommand :: Parser Command
 parseCommand = subparser
@@ -129,8 +129,8 @@ parseCommand = subparser
     <> command "show"     (parseShow     `withInfo` showHelpMessage)
     <> command "log"      (parseLog      `withInfo` logHelpMessage)
     <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
-    <> command "ignore"   (parseIgnore   `withInfo` ignoreHelpMessage)
-    <> command "unignore" (parseUnignore `withInfo` unignoreHelpMessage)
+    <> command "untrack"  (parseUntrack  `withInfo` untrackHelpMessage)
+    <> command "retrack"  (parseRetrack  `withInfo` retrackHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -165,11 +165,11 @@ parseCommand = subparser
         squashHelpMessage :: String
         squashHelpMessage = "Squash commits up to specified ref (non-inclusive)"
 
-        ignoreHelpMessage :: String
-        ignoreHelpMessage = "Ignore a file or directory"
+        untrackHelpMessage :: String
+        untrackHelpMessage = "Untrack a file or directory (that is, be no longer able to stage modifications or deletions of the specified file)."
 
-        unignoreHelpMessage :: String
-        unignoreHelpMessage = "Unignore a file or directory"
+        retrackHelpMessage :: String
+        retrackHelpMessage = "Retrack a file or directory (resume being able to stage modifications or deletions of the specified file)."
 
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
@@ -189,9 +189,9 @@ run cmd = do
         Commit msg False v      -> void $ Commands.commit def msg v
         Commit msg True v       -> void $ Commands.commitAmend def msg v
         Squash ref              -> void $ Commands.squash def ref
-        Ignore _ True v         -> void $ Commands.listIgnoredPaths v
-        Ignore (Just p) False _ -> void $ Commands.ignore p 
-        Unignore p              -> void $ Commands.unignore p
+        Untrack _ True v        -> void $ Commands.listUntrackedPaths v
+        Untrack (Just p) False _-> void $ Commands.untrack p 
+        Retrack p               -> void $ Commands.retrack p
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess
         else return ()

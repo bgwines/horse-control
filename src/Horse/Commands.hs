@@ -278,7 +278,7 @@ stage path = do
         left $ "Can't stage file or directory outside of the repository: " ++ path
     relativePaths <- getRelativePaths relativePath
 
-    diffs <- FD.filediffs <$> (diffWithHEAD $ Just relativePaths)
+    diffs <- FD.filediffs <$> (diffWithHEAD $ Just (relativePaths, True))
 
     pathExistsIsFile <- liftIO $ D.doesFileExist path
     pathExistsIsDir <- liftIO $ D.doesDirectoryExist path
@@ -347,7 +347,7 @@ commit hasher maybeMessage maybeVerbosity = do
         left "Fatal: can't commit with an empty staging area."
 
     -- behavior of `stage` ensures that this will never be `mempty`
-    stagedDiff <- HIO.loadStagingArea >>= diffWithHEAD . Just . files
+    stagedDiff <- HIO.loadStagingArea >>= diffWithHEAD . Just . (\fs -> (fs, False)) . files
 
     config <- HIO.loadConfig
 
@@ -613,7 +613,7 @@ refToHash unparsedRef = do
 
 -- | Pass in `Nothing` to diff all files; otherwise, pass in
 --   the files to diff.
-diffWithHEAD :: Maybe [FilePath] -> EitherT Error IO FD.Diff
+diffWithHEAD :: Maybe ([FilePath], Bool) -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
     headDir <- liftIO $ ((</>) HC.repositoryDataDir) <$> getTempDirectory
     liftIO $ D.createDirectory headDir
@@ -632,15 +632,19 @@ diffWithHEAD maybeFilesToDiff = do
     if isNothing maybeFilesToDiff
         then right allFilesDiff
         else do
-            let filesToDiff = fromJust maybeFilesToDiff
-            -- `comp` instead of `base` because `comp` is ".", whereas
-            -- `base` is ".horse/<temp directory>"
             right
                 $ FD.Diff
-                . filter ((flip elem $ filesToDiff) . FD.comp)
+                . filter (shouldInclude (fromJust maybeFilesToDiff))
                 . FD.filediffs
                 $ allFilesDiff
     where
+        shouldInclude :: ([FilePath], Bool) -> FD.Filediff -> Bool
+        shouldInclude (filesToDiff, includeDeletions) filediff
+            = ((flip elem $ filesToDiff) . FD.comp $ filediff)
+            || (includeDeletions && (FD.isDel . FD.change $ filediff))
+            -- `comp` instead of `base` because `comp` is ".", whereas
+            -- `base` is ".horse/<temp directory>"
+
         -- | Gives a name of a directory that is pretty much
         -- guaranteed to exist, so it's free for creation.
         getTempDirectory :: IO FilePath

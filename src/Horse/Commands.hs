@@ -194,8 +194,10 @@ status maybeVerbosity = do
         none :: (a -> Bool) -> [a] -> Bool
         none f = not . any f
 
-untrack :: String -> EitherT Error IO ()
-untrack path = do
+untrack :: String -> Maybe Verbosity -> EitherT Error IO ()
+untrack path maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
     assertIsRepositoryAndCdToRoot
@@ -206,6 +208,10 @@ untrack path = do
         left $ "Can't untrack file or directory outside of the repository: " ++ path
 
     HIO.loadUntrackedPaths >>= HIO.writeUntrackedPaths . nub . (:) relativePath
+
+    untrackingStagedFiles <- (any (flip isPrefixOf $ relativePath) . files) <$> HIO.loadStagingArea
+    unless (verbosity == Quiet) $ do
+        putStrLn' $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -276,6 +282,8 @@ stage path = do
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
         left $ "Can't stage file or directory outside of the repository: " ++ path
+    when (relativePath == ".horse") $ do
+        left $ "Fatal: cannot stage .horse; it is a directory required by horse-control."
     relativePaths <- getRelativePaths relativePath
 
     diffs <- FD.filediffs <$> (diffWithHEAD $ Just (relativePaths, True))

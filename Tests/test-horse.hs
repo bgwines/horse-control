@@ -558,7 +558,7 @@ testNoRepoUnstage :: Assertion
 testNoRepoUnstage = testNoRepo $ H.unstage Default.def
 
 testNoRepoUntrack :: Assertion
-testNoRepoUntrack = testNoRepo $ H.untrack Default.def
+testNoRepoUntrack = testNoRepo $ H.untrack Default.def (Just Quiet)
 
 testNoRepoRetrack :: Assertion
 testNoRepoRetrack = testNoRepo $ H.retrack Default.def
@@ -1826,7 +1826,7 @@ testUntrack = do
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "a"
+    runEitherT $ H.untrack "a" (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
@@ -1841,7 +1841,7 @@ testUntrackGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x"
+    runEitherT $ H.untrack "x" (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
@@ -1857,7 +1857,7 @@ testUntrackGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.untrack "."
+    runEitherT $ H.untrack "." (Just Quiet)
     D.setCurrentDirectory ".."
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -1870,7 +1870,7 @@ testRetrack = do
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "a"
+    runEitherT $ H.untrack "a" (Just Quiet)
     runEitherT $ H.retrack "a"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -1886,7 +1886,7 @@ testRetrackGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x"
+    runEitherT $ H.untrack "x" (Just Quiet)
     runEitherT $ H.retrack "x"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -1903,7 +1903,7 @@ testRetrackGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.untrack "."
+    runEitherT $ H.untrack "." (Just Quiet)
     runEitherT $ H.retrack "."
     D.setCurrentDirectory ".."
 
@@ -1917,7 +1917,7 @@ testStagingUntrackedFile = do
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "b"
+    runEitherT $ H.untrack "b" (Just Quiet)
     runEitherT $ H.stage "b"
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
@@ -1933,8 +1933,8 @@ testUntrackMultipleTimes = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x/a"
-    runEitherT $ H.untrack "x/y"
+    runEitherT $ H.untrack "x/a" (Just Quiet)
+    runEitherT $ H.untrack "x/y" (Just Quiet)
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
@@ -2007,7 +2007,7 @@ testUntrackPathOutsideOfRepo :: Assertion
 testUntrackPathOutsideOfRepo = do
     runEitherT $ H.init (Just Quiet)
 
-    eitherUnit <- runEitherT $ H.untrack "../a"
+    eitherUnit <- runEitherT $ H.untrack "../a" (Just Quiet)
 
     eitherUnit @?= Left "Can't untrack file or directory outside of the repository: ../a"
 
@@ -2027,7 +2027,7 @@ testRemovingUntrackedFile = do
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    runEitherT $ H.untrack "a"
+    runEitherT $ H.untrack "a" (Just Quiet)
 
     D.removeFile "a"
 
@@ -2051,6 +2051,39 @@ testStageCurrentDirectoryRemovedFile = do
 
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea [] [] ["a"]) [])
+
+testRetrackingNeverUntrackedFile :: Assertion
+testRetrackingNeverUntrackedFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    result <- runEitherT $ H.retrack "a"
+
+    result @?= Right ()
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
+
+testStagingHorseDir :: Assertion
+testStagingHorseDir = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherStagingArea <- runEitherT $ H.stage ".horse"
+    eitherStagingArea @?= Left "Fatal: cannot stage .horse; it is a directory required by horse-control."
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea [] [] []) [])
+
+testUntrackingStagedFile :: Assertion
+testUntrackingStagedFile = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT $ H.untrack "a" (Just Quiet)
+
+    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
 commandTests :: TestTree
 commandTests = testGroup "unit tests (Horse.Commands)"
@@ -2150,6 +2183,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `stage` when given a directory (edge case 6)"
         (runTest testStageDirectoryEdgeCase6)
+    , testCase
+        "Testing command `stage` when given a directory (edge case 7)."
+        (runTest testStagingHorseDir)
     , testCase
         "Testing command `status` (case 1)"
         (runTest testStatusCase1)
@@ -2306,6 +2342,12 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `untrack` when removing a file."
         (runTest testRemovingUntrackedFile)
+    , testCase
+        "Testing command `retrack` when given a never-untracked file."
+        (runTest testRetrackingNeverUntrackedFile)
+    , testCase
+        "Testing command `untrack` when given a staged file."
+        (runTest testUntrackingStagedFile)
     ]
 
 testNoRepoRepoRoot :: Assertion
@@ -2330,7 +2372,7 @@ testDestructivelyCreateDirectory = do
     H.destructivelyCreateDirectory "x"
 
     contents <- D.getDirectoryContents "."
-    contents @?= [".", "..", "x"]
+    (sort contents) @?= (sort [".", "..", "x"])
 
 testGetDirectoryContentsRecursiveSafe :: Assertion
 testGetDirectoryContentsRecursiveSafe = do

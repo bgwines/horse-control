@@ -6,7 +6,6 @@ API
         * "current" branch
         * rebase
     * diff
-    * (un)ignore -> retrack?
     * revert
     * networking
 
@@ -19,9 +18,3 @@ Code
 UX
     * performance
     * handle binary files / other file types (.png, etc.)
-
-Bugs
-    * stage, then ignore?
-    * ignore, then stage?
-    * stage .horse
-    * retrack never-untracked file

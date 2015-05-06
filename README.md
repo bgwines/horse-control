@@ -18,6 +18,31 @@ Differences with Git
 * `horse init` doesn't overwrite existing repositories like `git init` does
 * can't initialize a repo in a subdirectory of another repo
 * `checkout` completely overwrites working directory (product of not distinguishing between tracked and untracked files)
+* `untrack` and `retrack` replace `.gitignore`. Their behavior is also slightly different w.r.t. previously tracked files in Git, since horse-control doesn't distinguish between untracked and unstaged files.
+
+Currently exposed commands and functionality
+--------------------------------------------
+
+### commands ###
+
+* init
+* config
+* status
+* stage
+* unstage
+* commit
+* commit --amend
+* checkout
+* show
+* log
+* squash
+* untrack
+* untrack --list
+* retrack
+
+### additional ###
+
+* Git-like parent/ancestor syntax (`^`, `~`)
 
 Installation
 ------------
@@ -49,9 +74,7 @@ Installation
 Testing
 -------
 
-Testing suite: Tasty-HUnit
-
-Number of unit tests: 88 (and rising!)
+Number of unit tests: 93 (and rising!)
 
 Code coverage: ![](coverage.png)
 

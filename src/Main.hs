@@ -190,7 +190,7 @@ run cmd = do
         Commit msg True v       -> void $ Commands.commitAmend def msg v
         Squash ref              -> void $ Commands.squash def ref
         Untrack _ True v        -> void $ Commands.listUntrackedPaths v
-        Untrack (Just p) False _-> void $ Commands.untrack p 
+        Untrack (Just p) False v-> void $ Commands.untrack p v
         Retrack p               -> void $ Commands.retrack p
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess

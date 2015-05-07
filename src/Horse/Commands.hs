@@ -166,7 +166,7 @@ status maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     stagingArea <- HIO.loadStagingArea
     unstagedFiles <- loadUnstagedFiles
@@ -201,14 +201,14 @@ untrack path maybeVerbosity = do
 
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
         left $ "Can't untrack file or directory outside of the repository: " ++ path
 
-    HIO.loadUntrackedPaths >>= HIO.writeUntrackedPaths . nub . (:) relativePath
+    HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . nub . (:) relativePath
 
     untrackingStagedFiles <- (any (flip isPrefixOf $ relativePath) . files) <$> HIO.loadStagingArea
     unless (verbosity == Quiet) $ do
@@ -220,14 +220,14 @@ retrack :: String -> EitherT Error IO ()
 retrack path = do
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
     when (isPrefixOf ".." relativePath) $ do
         left $ "Can't retrack file or directory outside of the repository: " ++ path
 
-    HIO.loadUntrackedPaths >>= HIO.writeUntrackedPaths . removeSubdirsOf relativePath
+    HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . removeSubdirsOf relativePath
 
     liftIO $ D.setCurrentDirectory userDirectory
     where
@@ -239,7 +239,7 @@ listUntrackedPaths maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     paths <- HIO.loadUntrackedPaths
 
@@ -255,7 +255,7 @@ listUntrackedPaths maybeVerbosity = do
 unstage :: String -> EitherT Error IO StagingArea
 unstage path = do
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
@@ -277,7 +277,7 @@ unstage path = do
 stage :: String -> EitherT Error IO StagingArea
 stage path = do
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
@@ -321,7 +321,7 @@ stage path = do
 commitAmend :: CommitHasher -> Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
 commitAmend hasher maybeMessage maybeVerbosity = do
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     unlessM commitsHaveBeenMade $
         left "Fatal: cannot amend when no commits have been made."
@@ -341,7 +341,7 @@ commit hasher maybeMessage maybeVerbosity = do
     let message = fromMaybe "default message" maybeMessage
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     -- commit params
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
@@ -390,7 +390,7 @@ commit hasher maybeMessage maybeVerbosity = do
 squash :: CommitHasher -> String -> EitherT Error IO Commit
 squash hasher ref = do
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     historyToRoot <- log Nothing Nothing (Just Quiet)
 
@@ -431,7 +431,7 @@ squash hasher ref = do
 checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
 checkout ref _ = do
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     hash <- refToHash ref
     checkoutToDirectory "." hash
@@ -447,7 +447,7 @@ show maybeRef maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
@@ -467,7 +467,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     haveCommitsBeenMade <- commitsHaveBeenMade
     history <- if haveCommitsBeenMade
@@ -492,7 +492,7 @@ diff maybeVerbosity = do
     let verbosity = fromMaybe Normal maybeVerbosity
 
     userDirectory <- liftIO D.getCurrentDirectory
-    assertIsRepositoryAndCdToRoot
+    HF.assertIsRepositoryAndCdToRoot
 
     unlessM commitsHaveBeenMade $ do
         left "Fatal: can't diff with HEAD when no commits have been made."
@@ -521,24 +521,19 @@ getRelativePaths relativePath = do
 
     right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
 
-assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
-assertIsRepositoryAndCdToRoot = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    isRepository <- liftIO $ HF.isInRepository userDirectory
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
-    HF.repoRoot >>= liftIO . D.setCurrentDirectory
-
 -- | Identifies whether any commits have been made in the current
 --   repository.
 commitsHaveBeenMade :: EitherT Error IO Bool
 commitsHaveBeenMade = ((/=) Default.def) <$> HIO.loadHeadHash
+
 
 -- | Checks out the specified hash to the specified directory. *NOTE*:
 --   will entirely overwrite the contents of the specified directory;
 --   be careful.
 checkoutToDirectory :: FilePath -> Hash -> EitherT Error IO ()
 checkoutToDirectory dir hash = do
+    liftIO HF.assertCurrDirIsRepo
+
     liftIO clearDirectory
     history <- HIO.loadCommit hash >>= loadHistory
     let diffs = reverse . map diffWithPrimaryParent $ history
@@ -562,18 +557,18 @@ checkoutToDirectory dir hash = do
 -- | Loads the history from a given commit, all the way back
 --   to the start. Returns in reverse order (latest commit at front).
 loadHistory :: Commit -> EitherT Error IO [Commit]
-loadHistory commit
-    = liftIO
-    . fmap ((:) commit)
-    . iterateMaybeM (runMaybeT . loadParent)
-    $ commit
+loadHistory commit = do
+    liftIO HF.assertCurrDirIsRepo
+    liftIO
+        . fmap ((:) commit)
+        . iterateMaybeM (runMaybeT . loadParent)
+        $ commit
     where
         -- | Attempts to load the parent commit for a given commit.
         loadParent :: Commit -> MaybeT IO Commit
         loadParent commit =
             if isJust $ parentHash commit
-                then
-                    hushT
+                then hushT
                     . HIO.loadCommit
                     . fromJust
                     . parentHash
@@ -588,6 +583,8 @@ loadHistory commit
 --   documentation.
 refToHash :: String -> EitherT Error IO Hash
 refToHash unparsedRef = do
+    liftIO HF.assertCurrDirIsRepo
+
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
         someHash -> untruncateHash . stringToHash $ someHash
@@ -643,6 +640,8 @@ refToHash unparsedRef = do
 --   the files to diff.
 diffWithHEAD :: Maybe ([FilePath], Bool) -> EitherT Error IO FD.Diff
 diffWithHEAD maybeFilesToDiff = do
+    liftIO HF.assertCurrDirIsRepo
+
     headDir <- liftIO $ ((</>) HC.repositoryDataDir) <$> getTempDirectory
     liftIO $ D.createDirectory headDir
 

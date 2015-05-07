@@ -77,6 +77,7 @@ import Horse.Utils
     , stringToHash
     , putStrLn' )
 import qualified Horse.Constants as HC
+import qualified Horse.Filesystem as HF
 
 -- | Writes a serializable object to a file.
 writeToFile :: (Serialize.Serialize a) => FilePath -> a -> IO ()
@@ -145,8 +146,10 @@ loadAllHashes = loadFromFile HC.hashesPath
 -- | Writes the specified hash to the list of hashes of every commit ever
 --   made in the repo.
 writeHash :: Hash -> EitherT Error IO ()
-writeHash hash =
-    loadAllHashes >>= liftIO . writeToFile HC.hashesPath . (:) hash
+writeHash hash
+    = liftIO HF.assertCurrDirIsRepo
+    >> loadAllHashes
+    >>= liftIO . writeToFile HC.hashesPath . (:) hash
 
 -- * config
 
@@ -155,20 +158,30 @@ writeHash hash =
 --   or if deserialization fails (which might happen if the database
 --   got corrupted).
 loadConfig :: EitherT Error IO Config
-loadConfig = (liftIO HC.configPath) >>= loadFromFile
+loadConfig
+    = liftIO HF.assertCurrDirIsRepo
+    >> (liftIO HC.configPath)
+    >>= loadFromFile
 
 -- | Writes the object representing user-specified configuration to disk.
 writeConfig :: Config -> IO ()
 writeConfig config = do
+    HF.assertCurrDirIsRepo
+
     configPath <- HC.configPath
     ByteString.writeFile configPath (Serialize.encode config)
 
 -- * untracking
 
 loadUntrackedPaths :: EitherT Error IO [FilePath]
-loadUntrackedPaths = map (ByteString8.unpack) <$> loadFromFile HC.untrackedPathsPath
+loadUntrackedPaths = do
+    liftIO HF.assertCurrDirIsRepo
+    map (ByteString8.unpack) <$> loadFromFile HC.untrackedPathsPath
 
 -- | Loads the hashes of all commits ever made in the repo.
-writeUntrackedPaths :: [FilePath] -> EitherT Error IO ()
-writeUntrackedPaths
-    = liftIO . writeToFile HC.untrackedPathsPath . map ByteString8.pack
+writeUntrackedPaths :: [FilePath] -> IO ()
+writeUntrackedPaths paths = do 
+    HF.assertCurrDirIsRepo
+    writeToFile HC.untrackedPathsPath
+        . map ByteString8.pack
+        $ paths

@@ -9,12 +9,16 @@ module Horse.Filesystem
 , repoRoot
 , filesystemAncestors
 , isInRepository
+, assertIsRepositoryAndCdToRoot
+, assertCurrDirIsRepo
 ) where
 
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
+
+import Control.Exception.Base
 
 import Data.Maybe
 import Data.List ((\\))
@@ -160,11 +164,10 @@ isInRepository filepath
     = D.canonicalizePath filepath
     >>= filesystemAncestors
     >>= (fmap or . mapM isRepo)
-    where
 
-        -- | Returns whether the specified directory is part of a repository.
-        isRepo :: FilePath -> IO Bool
-        isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
+-- | Returns whether the specified directory is part of a repository.
+isRepo :: FilePath -> IO Bool
+isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
 
 -- | (wrapper around 'Filesystem.Path.collapse')
 collapse :: FilePath -> FilePath
@@ -173,3 +176,17 @@ collapse
     . encodeString
     . Filesystem.Path.collapse
     . decodeString
+
+assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
+assertIsRepositoryAndCdToRoot = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    isRepository <- liftIO $ isInRepository userDirectory
+    unless isRepository $ do
+        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    repoRoot >>= liftIO . D.setCurrentDirectory
+
+assertCurrDirIsRepo :: IO ()
+assertCurrDirIsRepo = assertM (isRepo ".") ()
+    where
+        assertM :: IO Bool -> a -> IO a
+        assertM bool x = bool >>= return . (flip assert $ x)

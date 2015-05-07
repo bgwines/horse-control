@@ -5,16 +5,13 @@ API
         * merging
         * "current" branch
         * rebase
-    * diff
     * revert
     * networking
 
 Code
     * ResourceT
     * writerT?
-    * multithreading
-        * STM
-    * assert current directory
+    * more multithreading?
 
 UX
     * performance

@@ -32,6 +32,7 @@ data Command
     | Squash String
     | Untrack (Maybe String) Bool (Maybe Types.Verbosity)
     | Retrack String
+    | Diff (Maybe Types.Verbosity)
     deriving (Show)
 
 verbosityOption :: Parser (Maybe Types.Verbosity)
@@ -116,6 +117,9 @@ parseUntrack = Untrack
 parseRetrack :: Parser Command
 parseRetrack = Retrack <$> (argument str $ metavar "PATH")
 
+parseDiff :: Parser Command
+parseDiff = Diff <$> verbosityOption
+
 parseCommand :: Parser Command
 parseCommand = subparser
     $  command "version"  (parseVersion  `withInfo` versionHelpMessage)
@@ -131,6 +135,7 @@ parseCommand = subparser
     <> command "squash"   (parseSquash   `withInfo` squashHelpMessage)
     <> command "untrack"  (parseUntrack  `withInfo` untrackHelpMessage)
     <> command "retrack"  (parseRetrack  `withInfo` retrackHelpMessage)
+    <> command "diff"     (parseDiff     `withInfo` diffHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -171,27 +176,31 @@ parseCommand = subparser
         retrackHelpMessage :: String
         retrackHelpMessage = "Retrack a file or directory (resume being able to stage modifications or deletions of the specified file)."
 
+        diffHelpMessage :: String
+        diffHelpMessage = "Print the difference between the working directory and HEAD."
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
 run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- runEitherT $ case cmd of
-        Version                 -> liftIO . putStrLn $ "0.1.0.0"
-        Init v                  -> Commands.init v
-        Checkout ref v          -> Commands.checkout ref v
-        Config name email       -> void $ Commands.config name email
-        Show ref                -> void $ Commands.show ref Nothing
-        Stage path              -> void $ Commands.stage path
-        Unstage path            -> void $ Commands.unstage path
-        Log ref n v             -> void $ Commands.log ref n v
-        Status v                -> void $ Commands.status v
-        Commit msg False v      -> void $ Commands.commit def msg v
-        Commit msg True v       -> void $ Commands.commitAmend def msg v
-        Squash ref              -> void $ Commands.squash def ref
-        Untrack _ True v        -> void $ Commands.listUntrackedPaths v
-        Untrack (Just p) False v-> void $ Commands.untrack p v
-        Retrack p               -> void $ Commands.retrack p
+        Version                  -> liftIO . putStrLn $ "0.1.0.0"
+        Init v                   -> Commands.init v
+        Checkout ref v           -> Commands.checkout ref v
+        Config name email        -> void $ Commands.config name email
+        Show ref                 -> void $ Commands.show ref Nothing
+        Stage path               -> void $ Commands.stage path
+        Unstage path             -> void $ Commands.unstage path
+        Log ref n v              -> void $ Commands.log ref n v
+        Status v                 -> void $ Commands.status v
+        Commit msg False v       -> void $ Commands.commit def msg v
+        Commit msg True v        -> void $ Commands.commitAmend def msg v
+        Squash ref               -> void $ Commands.squash def ref
+        Untrack _ True v         -> void $ Commands.listUntrackedPaths v
+        Untrack (Just p) False v -> void $ Commands.untrack p v
+        Retrack p                -> void $ Commands.retrack p
+        Diff v                   -> void $ Commands.diff v
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess
         else return ()

@@ -566,6 +566,9 @@ testNoRepoRetrack = testNoRepo $ H.retrack Default.def
 testNoRepoListUntracked :: Assertion
 testNoRepoListUntracked = testNoRepo $ H.listUntrackedPaths (Just Quiet)
 
+testNoRepoDiff :: Assertion
+testNoRepoDiff = testNoRepo $ H.diff (Just Quiet)
+
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
     runEitherT $ H.init (Just Quiet)
@@ -2085,6 +2088,71 @@ testUntrackingStagedFile = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
+testDiffFromSubdir :: Assertion
+testDiffFromSubdir = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    createFileWithContents "b" "b"
+
+    D.createDirectory "x"
+    D.setCurrentDirectory "x"
+    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+    D.setCurrentDirectory ".."
+
+    eitherDiff @?= (Right $
+        FD.Diff
+            { FD.filediffs =
+                [ FD.Filediff
+                    { FD.base = "b"
+                    , FD.comp = "b"
+                    , FD.change = FD.Add $ FD.ListDiff
+                        { FD.dels = []
+                        , FD.adds = [(0,"b")]
+                        }
+                    }
+                ]
+            })
+
+testDiff :: Assertion
+testDiff = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    createFileWithContents "b" "b"
+
+    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+
+    eitherDiff @?= (Right $
+        FD.Diff
+            { FD.filediffs =
+                [ FD.Filediff
+                    { FD.base = "b"
+                    , FD.comp = "b"
+                    , FD.change = FD.Add $ FD.ListDiff
+                        { FD.dels = []
+                        , FD.adds = [(0,"b")]
+                        }
+                    }
+                ]
+            })
+
+testDiffNoCommitsHaveBeenMade :: Assertion
+testDiffNoCommitsHaveBeenMade = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+
+    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+
+    eitherDiff @?= Left "Fatal: can't diff with HEAD when no commits have been made."
+
 commandTests :: TestTree
 commandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
@@ -2120,6 +2188,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `config` run without a repo"
         (runTest testNoRepoConfig)
+    , testCase
+        "Testing command `diff` run without a repo"
+        (runTest testNoRepoDiff)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -2348,6 +2419,15 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `untrack` when given a staged file."
         (runTest testUntrackingStagedFile)
+    , testCase
+        "Testing command `diff`"
+        (runTest testDiff)
+    , testCase
+        "Testing command `diff` run from a subdirectory"
+        (runTest testDiffFromSubdir)
+    , testCase
+        "Testing command `diff` run without any commits made"
+        (runTest testDiffNoCommitsHaveBeenMade)
     ]
 
 testNoRepoRepoRoot :: Assertion

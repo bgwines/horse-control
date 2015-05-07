@@ -39,6 +39,7 @@ Currently exposed commands and functionality
 * untrack
 * untrack --list
 * retrack
+* diff
 
 ### additional ###
 
@@ -74,7 +75,7 @@ Installation
 Testing
 -------
 
-Number of unit tests: 93 (and rising!)
+Number of unit tests: 97 (and rising!)
 
 Code coverage: ![](coverage.png)
 

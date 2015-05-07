@@ -12,8 +12,9 @@ API
 Code
     * ResourceT
     * writerT?
-    * STM
     * multithreading
+        * STM
+    * assert current directory
 
 UX
     * performance

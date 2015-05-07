@@ -20,6 +20,7 @@ module Horse.Commands
 , Horse.Commands.untrack
 , Horse.Commands.retrack
 , Horse.Commands.listUntrackedPaths
+, Horse.Commands.diff
 ) where
 
 -- imports
@@ -484,6 +485,25 @@ log maybeRef maybeNumCommits maybeVerbosity = do
     liftIO $ D.setCurrentDirectory userDirectory
 
     right history
+
+-- | Prints out the difference between the working directory and HEAD
+diff :: Maybe Verbosity -> EitherT Error IO FD.Diff
+diff maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    assertIsRepositoryAndCdToRoot
+
+    unlessM commitsHaveBeenMade $ do
+        left "Fatal: can't diff with HEAD when no commits have been made."
+
+    theDiff <- diffWithHEAD Nothing
+    when (verbosity /= Quiet) $ do
+        liftIO $ HP.printDiff theDiff
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    right theDiff
 
 -- * helper functions (not exposed)
 

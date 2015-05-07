@@ -8,6 +8,7 @@ module Horse.Printing
 , printCommitStats
 , printCommit
 , printStatus
+, printDiff
 ) where
 
 import Rainbow
@@ -15,6 +16,7 @@ import Rainbow
 import Data.Monoid
 import Control.Applicative
 
+import qualified Filediff.Types as FD
 import qualified Filediff.Stats as FD
 import qualified Filediff.Printing as FD
 
@@ -103,3 +105,6 @@ printStatus (Status stagingArea unstagedFiles) = do
 
     putStrLn "Unstaged changes:"
     print unstagedFiles
+
+printDiff :: FD.Diff -> IO ()
+printDiff = FD.printDiff

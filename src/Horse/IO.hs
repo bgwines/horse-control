@@ -24,6 +24,10 @@ module Horse.IO
 -- * untracking
 , loadUntrackedPaths
 , writeUntrackedPaths
+
+-- * branches
+, loadAllBranches
+, writeAllBranches
 ) where
 
 -- imports
@@ -60,7 +64,7 @@ import qualified Data.Text.Punycode as Punycode (encode)
 
 -- imported functions
 
-import Data.List (nub)
+import Data.List (nub, (\\))
 import Data.Maybe (isJust, fromJust)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -185,3 +189,25 @@ writeUntrackedPaths paths = do
     writeToFile HC.untrackedPathsPath
         . map ByteString8.pack
         $ paths
+
+loadAllBranches :: EitherT Error IO [Branch]
+loadAllBranches
+    = liftIO HF.assertCurrDirIsRepo
+    >> loadFromFile HC.branchesPath
+
+writeAllBranches :: [Branch] -> IO ()
+writeAllBranches branches
+    = liftIO HF.assertCurrDirIsRepo
+    >> writeToFile HC.branchesPath branches
+
+--writeBranch :: Branch -> EitherT Error IO ()
+--writeBranch branch
+--    = liftIO HF.assertCurrDirIsRepo
+--    >> loadAllBranches
+--    >>= liftIO . writeToFile HC.branchesPath . (:) branch
+
+--removeStoredBranch :: Branch -> EitherT Error IO ()
+--removeStoredBranch branch
+--    = liftIO HF.assertCurrDirIsRepo
+--    >> loadAllBranches
+--    >>= liftIO . writeToFile HC.branchesPath . (flip (\\) $ [branch])

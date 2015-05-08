@@ -5,22 +5,39 @@
 
 -- | Commands exposed through the CLI
 module Horse.Commands
-( -- * Basic commands
-  Horse.Commands.config
+( -- * changing HEAD
+  Horse.Commands.checkout
+
+  -- * set-up
+, Horse.Commands.config
 , Horse.Commands.init
-, Horse.Commands.status
-, Horse.Commands.stage
-, Horse.Commands.unstage
+
+  -- * displaying information
+, Horse.Commands.log
+, Horse.Commands.show
+, Horse.Commands.diff
+
+  -- * committing
 , Horse.Commands.commit
 , Horse.Commands.commitAmend
 , Horse.Commands.squash
-, Horse.Commands.checkout
-, Horse.Commands.show
-, Horse.Commands.log
+
+  -- * the staging area
+, Horse.Commands.stage
+, Horse.Commands.status
+, Horse.Commands.unstage
+
+  -- * untracking
 , Horse.Commands.untrack
 , Horse.Commands.retrack
 , Horse.Commands.listUntrackedPaths
-, Horse.Commands.diff
+
+  -- * branches
+, Horse.Commands.createBranch
+, Horse.Commands.createBranchSetCurrent
+, Horse.Commands.deleteBranch
+, Horse.Commands.setBranch
+, Horse.Commands.listBranches
 ) where
 
 -- imports
@@ -101,6 +118,75 @@ import qualified Horse.IO as HIO
 import qualified Horse.Printing as HP
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
+
+createBranchSetCurrent :: String -> Maybe String -> Maybe Verbosity -> EitherT Error IO Branch
+createBranchSetCurrent branchName maybeRef maybeVerbosity =
+    createBranch' branchName maybeRef maybeVerbosity True
+
+createBranch :: String -> Maybe String -> Maybe Verbosity -> EitherT Error IO Branch
+createBranch branchName maybeRef maybeVerbosity =
+    createBranch' branchName maybeRef maybeVerbosity False
+
+createBranch' :: String -> Maybe String -> Maybe Verbosity -> Bool -> EitherT Error IO Branch
+createBranch' branchName maybeRef maybeVerbosity setCurrent = do
+    userDirectory <- liftIO D.getCurrentDirectory
+    HF.assertIsRepositoryAndCdToRoot
+
+    ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
+
+    let newBranch = Branch branchName ref False
+    HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (:) newBranch
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    right newBranch
+    --where
+    --    makeNotCurrent :: Branch -> Branch
+    --    makeNotCurrent b@(Branch name hash _) = Branch name hash False
+
+deleteBranch :: String -> Maybe Verbosity -> EitherT Error IO ()
+deleteBranch branchNameToDelete maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    HF.assertIsRepositoryAndCdToRoot
+
+    branches <- HIO.loadAllBranches
+    let maybeBranchToDelete = find ((==) branchNameToDelete . branchName) branches
+    when (isNothing maybeBranchToDelete) $
+        left ("Error: can't delete nonexistent branch \"" ++ branchNameToDelete ++ "\"")
+    let branchToDelete = fromJust maybeBranchToDelete
+
+    let isCurrent = maybe False isCurrentBranch maybeBranchToDelete
+    when isCurrent $
+        left ("Fatal: cannot delete current branch (" ++ branchNameToDelete ++ ")")
+
+    HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+listBranches :: Maybe Verbosity -> EitherT Error IO [Branch]
+listBranches maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    HF.assertIsRepositoryAndCdToRoot
+
+    branches <- HIO.loadAllBranches
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    right branches
+
+setBranch :: String -> String -> Maybe Verbosity -> EitherT Error IO ()
+setBranch branchName ref maybeVerbosity = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
+    userDirectory <- liftIO D.getCurrentDirectory
+    HF.assertIsRepositoryAndCdToRoot
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
@@ -371,6 +457,12 @@ commit hasher maybeMessage maybeVerbosity = do
 
     let commitHash = hashingAlg hasher $ hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
+
+    branches <- HIO.loadAllBranches
+    let maybeCurrentBranch = find isCurrentBranch branches
+    let currentBranch = maybe (Branch HC.defaultBranchName commitHash True) (\b -> b  { branchHash = commitHash }) maybeCurrentBranch
+    let updatedBranches = currentBranch : (filter (not . isCurrentBranch) branches)
+    liftIO $ HIO.writeAllBranches updatedBranches
 
     HIO.writeCommit completeCommit
     liftIO $ do

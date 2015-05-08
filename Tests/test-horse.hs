@@ -18,7 +18,6 @@ import qualified System.IO as IO
 import qualified System.Directory as D
 
 import qualified Data.Hex as Hex
-import qualified Data.Default as Default
 import qualified Data.Serialize as Serialize
 import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Internal as ByteString (c2w, w2c)
@@ -30,7 +29,10 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
+
 import Data.List (sort)
+
+import Data.Default (def)
 
 import System.Exit (exitSuccess)
 
@@ -88,10 +90,10 @@ createFileWithContents filepath contents = do
     IO.hClose handle
 
 quietCommit :: Maybe String -> EitherT Error IO Commit
-quietCommit m = H.commit Default.def m (Just Quiet)
+quietCommit m = H.commit def m (Just Quiet)
 
 noargCommit :: EitherT Error IO Commit
-noargCommit = H.commit Default.def Nothing (Just Quiet)
+noargCommit = H.commit def Nothing (Just Quiet)
 
 getStatus :: IO Status
 getStatus = do
@@ -99,9 +101,76 @@ getStatus = do
     assertBool "`status` should not fail" (isRight eitherStatus)
     return $ fromRight undefined eitherStatus
 
-
 assertFieldEqual :: (Eq a, Show a) => Commit -> Commit -> (Commit -> a) -> Assertion
 assertFieldEqual a b field = field a @?= field b
+
+testNoRepoRepoRoot :: Assertion
+testNoRepoRepoRoot = do
+    eitherRepoRoot <- runEitherT H.repoRoot
+    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
+
+testRepoRootNoAncestors :: Assertion
+testRepoRootNoAncestors = do
+    originalDir <- D.getCurrentDirectory
+    D.setCurrentDirectory "/"
+
+    eitherRepoRoot <- runEitherT H.repoRoot
+    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
+
+    D.setCurrentDirectory originalDir
+
+testDestructivelyCreateDirectory :: Assertion
+testDestructivelyCreateDirectory = do
+    D.createDirectory "x"
+    createFileWithContents "x/a" "a"
+    H.destructivelyCreateDirectory "x"
+
+    contents <- D.getDirectoryContents "."
+    (sort contents) @?= (sort [".", "..", "x"])
+
+testGetDirectoryContentsRecursiveSafe :: Assertion
+testGetDirectoryContentsRecursiveSafe = do
+    contents <- H.getDirectoryContentsRecursiveSafe "x"
+    contents @?= []
+
+testDropPrefix :: Assertion
+testDropPrefix = do
+    H.dropPrefix ("abc" :: String) ("ab"  :: String) @?= Nothing
+    H.dropPrefix ("abc" :: String) ("abc" :: String) @?= Just []
+    H.dropPrefix ("abc" :: String) ("axc" :: String) @?= Nothing
+
+filesystemTests :: TestTree
+filesystemTests = testGroup "unit tests (Horse.Filesystem)"
+    [ testCase
+        "Testing `repoRoot` not in a repo"
+        (runTest testNoRepoRepoRoot)
+    , testCase
+        "Testing `repoRoot` with no ancestors"
+        (runTest testRepoRootNoAncestors)
+    , testCase
+        "Testing `destructivelyCreateDirectory`"
+        (runTest testDestructivelyCreateDirectory)
+    , testCase
+        "Testing `getDirectoryContentsRecursiveSafe`"
+        (runTest testGetDirectoryContentsRecursiveSafe)
+    , testCase
+        "Testing `dropPrefix`"
+        (runTest testDropPrefix)
+    ]
+
+testLoadCommitErrorCase :: Assertion
+testLoadCommitErrorCase = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherCommit <- runEitherT $ H.loadCommit "xyz"
+    eitherCommit @?= Left "Could not fetch commit for key \"xyz\"."
+
+ioTests :: TestTree
+ioTests = testGroup "unit tests (Horse.IO)"
+    [ testCase
+        "Testing `loadCommit` error case"
+        (runTest testLoadCommitErrorCase)
+    ]
 
 testRelativeSyntaxErrorCase :: Assertion
 testRelativeSyntaxErrorCase = do
@@ -435,7 +504,7 @@ testStatusCase1 = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
 
     assertBool "`status` command should not fail" (isRight eitherStatus)
-    stagingArea <$> eitherStatus @?= Right Default.def
+    stagingArea <$> eitherStatus @?= Right def
 
 testStatusCase2 :: Assertion
 testStatusCase2 = do
@@ -444,7 +513,7 @@ testStatusCase2 = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
 
     assertBool "`status` command should not fail" (isRight eitherStatus)
-    unstagedFiles <$> eitherStatus @?= Right Default.def
+    unstagedFiles <$> eitherStatus @?= Right def
 
 testStatusCase3 :: Assertion
 testStatusCase3 = do
@@ -456,7 +525,7 @@ testStatusCase3 = do
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
 
-    stagingArea status @?= Default.def
+    stagingArea status @?= def
     unstagedFiles status @?= ["a"]
     return ()
 
@@ -472,7 +541,7 @@ testStatusCase4 = do
     eitherStatus <- runEitherT $ H.status (Just Quiet)
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
-    status @?= Default.def
+    status @?= def
 
     createFileWithContents "b" "b"
     runEitherT $ H.stage "b"
@@ -537,37 +606,49 @@ testNoRepoStatus :: Assertion
 testNoRepoStatus = testNoRepo $ H.status (Just Quiet)
 
 testNoRepoStage :: Assertion
-testNoRepoStage = testNoRepo $ H.stage Default.def
+testNoRepoStage = testNoRepo $ H.stage def
 
 testNoRepoCheckout :: Assertion
-testNoRepoCheckout = testNoRepo $ H.checkout Default.def (Just Quiet)
+testNoRepoCheckout = testNoRepo $ H.checkout def (Just Quiet)
 
 testNoRepoCommit :: Assertion
 testNoRepoCommit = testNoRepo $ noargCommit
 
 testNoRepoShow :: Assertion
-testNoRepoShow = testNoRepo $ H.show Default.def (Just Quiet)
+testNoRepoShow = testNoRepo $ H.show def (Just Quiet)
 
 testNoRepoLog :: Assertion
-testNoRepoLog = testNoRepo $ H.log Default.def Default.def Default.def
+testNoRepoLog = testNoRepo $ H.log def def def
 
 testNoRepoSquash :: Assertion
-testNoRepoSquash = testNoRepo $ H.squash Default.def Default.def
+testNoRepoSquash = testNoRepo $ H.squash def def
 
 testNoRepoUnstage :: Assertion
-testNoRepoUnstage = testNoRepo $ H.unstage Default.def
+testNoRepoUnstage = testNoRepo $ H.unstage def
 
 testNoRepoUntrack :: Assertion
-testNoRepoUntrack = testNoRepo $ H.untrack Default.def (Just Quiet)
+testNoRepoUntrack = testNoRepo $ H.untrack def (Just Quiet)
 
 testNoRepoRetrack :: Assertion
-testNoRepoRetrack = testNoRepo $ H.retrack Default.def
+testNoRepoRetrack = testNoRepo $ H.retrack def
 
 testNoRepoListUntracked :: Assertion
 testNoRepoListUntracked = testNoRepo $ H.listUntrackedPaths (Just Quiet)
 
 testNoRepoDiff :: Assertion
 testNoRepoDiff = testNoRepo $ H.diff (Just Quiet)
+
+testNoRepoBranchList :: Assertion
+testNoRepoBranchList = testNoRepo $ H.listBranches (Just Quiet)
+
+testNoRepoBranchDelete :: Assertion
+testNoRepoBranchDelete = testNoRepo $ H.deleteBranch def (Just Quiet)
+
+testNoRepoBranchCreate :: Assertion
+testNoRepoBranchCreate = testNoRepo $ H.createBranch def Nothing (Just Quiet)
+
+testNoRepoBranchSet :: Assertion
+testNoRepoBranchSet = testNoRepo $ H.setBranch def def (Just Quiet)
 
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
@@ -958,7 +1039,7 @@ testCommitAmend = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    eitherCommit <- runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
+    eitherCommit <- runEitherT $ H.commitAmend def Nothing (Just Quiet)
 
     ----------------
 
@@ -1009,7 +1090,7 @@ testCommitAmendNoPreviousCommits = do
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
-    eitherCommit <- runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
+    eitherCommit <- runEitherT $ H.commitAmend def Nothing (Just Quiet)
 
     eitherCommit @?= Left "Fatal: cannot amend when no commits have been made."
 
@@ -1035,7 +1116,7 @@ testCommitAmendFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commitAmend Default.def Nothing (Just Quiet)
+    runEitherT $ H.commitAmend def Nothing (Just Quiet)
 
     ----------------
 
@@ -1111,7 +1192,7 @@ testSquash = do
 
     ----------------
 
-    runEitherT $ H.squash Default.def (H.hashToString . hash $ firstCommit)
+    runEitherT $ H.squash def (H.hashToString . hash $ firstCommit)
 
     eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
@@ -1194,7 +1275,7 @@ testSquashFromSubdir = do
 
     ----------------
 
-    runEitherT $ H.squash Default.def (H.hashToString . hash $ firstCommit)
+    runEitherT $ H.squash def (H.hashToString . hash $ firstCommit)
 
     eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
@@ -1965,7 +2046,7 @@ testConfigFirstTimeNoParams = do
     H.configPath >>= D.removeFile
 
     eitherConfig <- runEitherT $ H.config Nothing Nothing
-    eitherConfig @?= Right (Config (UserInfo Default.def Default.def))
+    eitherConfig @?= Right (Config (UserInfo def def))
 
     assertBool "`config` should not fail" (isRight eitherPreviousConfig)
     let previousConfig = fromRight undefined eitherPreviousConfig
@@ -2153,6 +2234,159 @@ testDiffNoCommitsHaveBeenMade = do
 
     eitherDiff @?= Left "Fatal: can't diff with HEAD when no commits have been made."
 
+testBranchListNewRepo :: Assertion
+testBranchListNewRepo = do
+    runEitherT $ H.init (Just Quiet)
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+
+    eitherBranches @?= Right []
+
+testInitialCommitCreatesNewBranch :: Assertion
+testInitialCommitCreatesNewBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit <- runEitherT noargCommit
+
+    assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
+    let commitHash = hash $ fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+
+    eitherBranches @?= Right [Branch "master" commitHash True]
+
+testCommitAdvancesCurrentBranch :: Assertion
+testCommitAdvancesCurrentBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    runEitherT noargCommit
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "."
+    eitherCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
+    let commitHash = hash $ fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+
+    eitherBranches @?= Right [Branch "master" commitHash True]
+
+testBranchCreateCreatesNewBranch :: Assertion
+testBranchCreateCreatesNewBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
+    let commitHash = hash $ fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches @?= Right [Branch "master" commitHash True]
+
+    runEitherT $ H.createBranch "newbranch" Nothing (Just Quiet)
+    eitherBranches2 <- runEitherT $ H.listBranches (Just Quiet)
+
+    eitherBranches2 @?= Right
+        [ (Branch "newbranch" commitHash False)
+        , (Branch "master"    commitHash True) ]
+
+testBranchCreateCreatesNewBranchFromRef :: Assertion
+testBranchCreateCreatesNewBranchFromRef = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit1 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit1) (isRight eitherCommit1)
+    let commitHash1 = hash $ fromRight undefined eitherCommit1
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "."
+    eitherCommit2 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
+    let commitHash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches @?= Right
+        [ (Branch "newbranch" commitHash1 False)
+        , (Branch "master"    commitHash2 True) ]
+
+testCannotDeleteCurrentBranch :: Assertion
+testCannotDeleteCurrentBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit1 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit1) (isRight eitherCommit1)
+    let commitHash1 = hash $ fromRight undefined eitherCommit1
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "."
+    eitherCommit2 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
+    let commitHash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+
+    success <- runEitherT $ H.deleteBranch "master" (Just Quiet)
+    success @?= Left "Fatal: cannot delete current branch (master)"
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches @?= Right
+        [ (Branch "newbranch" commitHash1 False)
+        , (Branch "master"    commitHash2 True) ]
+
+testCanDeleteNoncurrentBranch :: Assertion
+testCanDeleteNoncurrentBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit1 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit1) (isRight eitherCommit1)
+    let commitHash1 = hash $ fromRight undefined eitherCommit1
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "."
+    eitherCommit2 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
+    let commitHash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+
+    success <- runEitherT $ H.deleteBranch "newbranch" (Just Quiet)
+    success @?= Right ()
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches @?= Right [Branch "master" commitHash2 True]
+
+testDeleteNonexistentBranch :: Assertion
+testDeleteNonexistentBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
+    let commitHash = hash $ fromRight undefined eitherCommit
+
+
+    success <- runEitherT $ H.deleteBranch "nonexistent" (Just Quiet)
+    success @?= Left "Error: can't delete nonexistent branch \"nonexistent\""
+
+    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches @?= Right [Branch "master" commitHash True]
+
+-- test delete GCs
+
 commandTests :: TestTree
 commandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
@@ -2191,6 +2425,18 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `diff` run without a repo"
         (runTest testNoRepoDiff)
+    , testCase
+        "Testing command `branch list` run without a repo"
+        (runTest testNoRepoBranchList)
+    , testCase
+        "Testing command `branch delete` run without a repo"
+        (runTest testNoRepoBranchDelete)
+    , testCase
+        "Testing command `branch create` run without a repo"
+        (runTest testNoRepoBranchCreate)
+    , testCase
+        "Testing command `branch set` run without a repo"
+        (runTest testNoRepoBranchSet)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -2428,74 +2674,24 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `diff` run without any commits made"
         (runTest testDiffNoCommitsHaveBeenMade)
-    ]
-
-testNoRepoRepoRoot :: Assertion
-testNoRepoRepoRoot = do
-    eitherRepoRoot <- runEitherT H.repoRoot
-    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
-
-testRepoRootNoAncestors :: Assertion
-testRepoRootNoAncestors = do
-    originalDir <- D.getCurrentDirectory
-    D.setCurrentDirectory "/"
-
-    eitherRepoRoot <- runEitherT H.repoRoot
-    eitherRepoRoot @?= Left "Fatal: current directory is not a repo or a decendant of one."
-
-    D.setCurrentDirectory originalDir
-
-testDestructivelyCreateDirectory :: Assertion
-testDestructivelyCreateDirectory = do
-    D.createDirectory "x"
-    createFileWithContents "x/a" "a"
-    H.destructivelyCreateDirectory "x"
-
-    contents <- D.getDirectoryContents "."
-    (sort contents) @?= (sort [".", "..", "x"])
-
-testGetDirectoryContentsRecursiveSafe :: Assertion
-testGetDirectoryContentsRecursiveSafe = do
-    contents <- H.getDirectoryContentsRecursiveSafe "x"
-    contents @?= []
-
-testDropPrefix :: Assertion
-testDropPrefix = do
-    H.dropPrefix ("abc" :: String) ("ab"  :: String) @?= Nothing
-    H.dropPrefix ("abc" :: String) ("abc" :: String) @?= Just []
-    H.dropPrefix ("abc" :: String) ("axc" :: String) @?= Nothing
-
-filesystemTests :: TestTree
-filesystemTests = testGroup "unit tests (Horse.Filesystem)"
-    [ testCase
-        "Testing `repoRoot` not in a repo"
-        (runTest testNoRepoRepoRoot)
     , testCase
-        "Testing `repoRoot` with no ancestors"
-        (runTest testRepoRootNoAncestors)
+        "Testing command `branch list` run after the first commit"
+        (runTest testInitialCommitCreatesNewBranch)
     , testCase
-        "Testing `destructivelyCreateDirectory`"
-        (runTest testDestructivelyCreateDirectory)
+        "Testing command `commit` advances current branch"
+        (runTest testCommitAdvancesCurrentBranch)
     , testCase
-        "Testing `getDirectoryContentsRecursiveSafe`"
-        (runTest testGetDirectoryContentsRecursiveSafe)
+        "Testing command `branch create` creates a new branch from HEAD"
+        (runTest testBranchCreateCreatesNewBranch)
     , testCase
-        "Testing `dropPrefix`"
-        (runTest testDropPrefix)
-    ]
-
-testLoadCommitErrorCase :: Assertion
-testLoadCommitErrorCase = do
-    runEitherT $ H.init (Just Quiet)
-
-    eitherCommit <- runEitherT $ H.loadCommit "xyz"
-    eitherCommit @?= Left "Could not fetch commit for key \"xyz\"."
-
-ioTests :: TestTree
-ioTests = testGroup "unit tests (Horse.IO)"
-    [ testCase
-        "Testing `loadCommit` error case"
-        (runTest testLoadCommitErrorCase)
+        "Testing command `branch create` creates a new branch from ref"
+        (runTest testBranchCreateCreatesNewBranchFromRef)
+    , testCase
+        "Testing command `branch delete` when given the current branch"
+        (runTest testCannotDeleteCurrentBranch)
+    , testCase
+        "Testing command `branch delete` when given a non-current branch"
+        (runTest testCanDeleteNoncurrentBranch)
     ]
 
 tests :: TestTree

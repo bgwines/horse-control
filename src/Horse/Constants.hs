@@ -12,12 +12,16 @@ module Horse.Constants
 , commitsPath
 , configPath
 , hashesPath
+, branchesPath
 , untrackedPathsPath
 
--- * lists
+  -- * lists
 , directories
 , databasePaths
 , serializationPathsAndInitialContents
+
+  -- * values
+, defaultBranchName
 ) where
 
 -- imports
@@ -94,7 +98,7 @@ headHashPath = repositoryDataDir </> "HEAD"
 -- | The path to where the object representing the staging area is stored
 --   (relative to root of repository).
 stagingAreaPath :: FilePath
-stagingAreaPath = repositoryDataDir </> "stagingArea"
+stagingAreaPath = repositoryDataDir </> "staging-area"
 
 -- | The path to where diffs are stored (relative to root of repository).
 diffsPath :: FilePath
@@ -110,10 +114,15 @@ commitsPath = repositoryDataDir </> "commits"
 hashesPath :: FilePath
 hashesPath = repositoryDataDir </> "hashes"
 
+-- | The path to where all branches are stored (relative to root of
+--   repository).
+branchesPath :: FilePath
+branchesPath = repositoryDataDir </> "branches"
+
 -- | The path to where all commits' hashes are stored (relative to root of
 --   repository).
 untrackedPathsPath :: FilePath
-untrackedPathsPath = repositoryDataDir </> "untrackedPaths"
+untrackedPathsPath = repositoryDataDir </> "untracked-paths"
 
 -- | The path to where the object representing user-specified
 --   configuration information is stored. Returnvalue is wrapped in
@@ -136,7 +145,12 @@ databasePaths = [diffsPath, commitsPath]
 --   those files upon initialization of an empty repository.
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
-    [ (headHashPath     , Serialize.encode $ (Def.def :: Hash))
-    , (stagingAreaPath  , Serialize.encode $ (Def.def :: StagingArea)) 
-    , (hashesPath       , Serialize.encode $ (Def.def :: [Hash]))
+    [ (headHashPath       , Serialize.encode $ (Def.def :: Hash))
+    , (stagingAreaPath    , Serialize.encode $ (Def.def :: StagingArea)) 
+    , (hashesPath         , Serialize.encode $ (Def.def :: [Hash]))
+    , (branchesPath       , Serialize.encode $ (Def.def :: [Branch]))
     , (untrackedPathsPath , Serialize.encode $ (Def.def :: [FilePath])) ]
+
+-- | The default branch. For now, "master"
+defaultBranchName :: String
+defaultBranchName = "master"

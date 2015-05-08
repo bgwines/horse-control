@@ -23,6 +23,8 @@ module Horse.Types(
 
 , CommitHasher(..)
 
+, Branch(..)
+
 -- * Aliases
 , EmailAddress
 , Hash
@@ -178,3 +180,17 @@ instance Default CommitHasher where
         . Hex.hex
         . SHA256.hash
         . Serialize.encode
+
+-- | A branch. Like Git branches, horse-control branches are pointers
+--   to commit hashes.
+data Branch = Branch {
+    branchName :: String,
+    branchHash :: Hash,
+    isCurrentBranch :: Bool
+} deriving (Eq, Show, Generic)
+
+instance Serialize Branch
+
+instance Default Branch where
+    def :: Branch
+    def = Branch def def False

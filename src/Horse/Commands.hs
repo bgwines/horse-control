@@ -129,15 +129,20 @@ createBranch branchName maybeRef maybeVerbosity =
 
 createBranch' :: String -> Maybe String -> Maybe Verbosity -> Bool -> EitherT Error IO Branch
 createBranch' branchName maybeRef maybeVerbosity setCurrent = do
+    let verbosity = fromMaybe Normal maybeVerbosity
+
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
-    ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
+    hash <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
 
-    let newBranch = Branch branchName ref False
+    let newBranch = Branch branchName hash False
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (:) newBranch
 
     liftIO $ D.setCurrentDirectory userDirectory
+
+    unless (verbosity == Quiet) $
+        putStrLn' ("Created branch \"" ++ branchName ++ "\", pointing to commit " ++ (hashToString hash))
 
     right newBranch
     --where
@@ -163,6 +168,9 @@ deleteBranch branchNameToDelete maybeVerbosity = do
 
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
 
+    unless (verbosity == Quiet) $
+        putStrLn' ("Deleted branch \"" ++ branchNameToDelete ++ "\"")
+
     liftIO $ D.setCurrentDirectory userDirectory
 
 listBranches :: Maybe Verbosity -> EitherT Error IO [Branch]
@@ -173,6 +181,9 @@ listBranches maybeVerbosity = do
     HF.assertIsRepositoryAndCdToRoot
 
     branches <- HIO.loadAllBranches
+
+    unless (verbosity == Quiet) $
+        print' branches
 
     liftIO $ D.setCurrentDirectory userDirectory
 

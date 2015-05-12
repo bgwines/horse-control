@@ -75,7 +75,7 @@ Installation
 Testing
 -------
 
-Number of unit tests: 97 (and rising!)
+Number of unit tests: 112 (and rising!)
 
 Code coverage: ![](coverage.png)
 

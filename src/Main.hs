@@ -33,6 +33,9 @@ data Command
     | Untrack (Maybe String) Bool (Maybe Types.Verbosity)
     | Retrack String
     | Diff (Maybe Types.Verbosity)
+    | CreateBranch String (Maybe String) (Maybe Types.Verbosity)
+    | DeleteBranch String (Maybe Types.Verbosity)
+    | ListBranches (Maybe Types.Verbosity)
     deriving (Show)
 
 verbosityOption :: Parser (Maybe Types.Verbosity)
@@ -114,11 +117,40 @@ parseUntrack = Untrack
     <*> switch (long "list" <> help "List untracked paths" )
     <*> verbosityOption
 
+parseCreateBranch :: Parser Command
+parseCreateBranch = CreateBranch
+    <$> (argument str $ metavar "BRANCH-NAME")
+    <*> (optional $ argument str $ metavar "REF")
+    <*> verbosityOption
+
+parseDeleteBranch :: Parser Command
+parseDeleteBranch = DeleteBranch
+    <$> (argument str $ metavar "BRANCH-NAME")
+    <*> verbosityOption
+
+parseListBranches :: Parser Command
+parseListBranches = ListBranches <$> verbosityOption
+
 parseRetrack :: Parser Command
 parseRetrack = Retrack <$> (argument str $ metavar "PATH")
 
 parseDiff :: Parser Command
 parseDiff = Diff <$> verbosityOption
+
+parseBranch :: Parser Command
+parseBranch = subparser
+    $  command "create" (parseCreateBranch `withInfo` branchCreateHelpMessage)
+    <> command "delete" (parseDeleteBranch `withInfo` branchDeleteHelpMessage)
+    <> command "list"   (parseListBranches `withInfo` branchListHelpMessage)
+    where
+        branchCreateHelpMessage :: String
+        branchCreateHelpMessage = "Create a branch"
+
+        branchDeleteHelpMessage :: String
+        branchDeleteHelpMessage = "Delete a branch"
+
+        branchListHelpMessage :: String
+        branchListHelpMessage = "List all branches"
 
 parseCommand :: Parser Command
 parseCommand = subparser
@@ -136,6 +168,7 @@ parseCommand = subparser
     <> command "untrack"  (parseUntrack  `withInfo` untrackHelpMessage)
     <> command "retrack"  (parseRetrack  `withInfo` retrackHelpMessage)
     <> command "diff"     (parseDiff     `withInfo` diffHelpMessage)
+    <> command "branch"   (parseBranch   `withInfo` branchHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -179,6 +212,9 @@ parseCommand = subparser
         diffHelpMessage :: String
         diffHelpMessage = "Print the difference between the working directory and HEAD."
 
+        branchHelpMessage :: String
+        branchHelpMessage = "Perform branch operations"
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
@@ -201,6 +237,9 @@ run cmd = do
         Untrack (Just p) False v -> void $ Commands.untrack p v
         Retrack p                -> void $ Commands.retrack p
         Diff v                   -> void $ Commands.diff v
+        CreateBranch b ref v     -> void $ Commands.createBranch b ref v
+        DeleteBranch b v         -> void $ Commands.deleteBranch b v
+        ListBranches v           -> void $ Commands.listBranches v
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess
         else return ()

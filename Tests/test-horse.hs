@@ -672,7 +672,6 @@ testCheckoutChangesHEAD = do
 
 testCheckout :: Assertion
 testCheckout = do
-
     runEitherT $ H.init (Just Quiet)
 
     ----------------
@@ -715,7 +714,7 @@ testCheckout = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             quietCheckout . H.hashToString $ hash
@@ -836,7 +835,7 @@ testCheckoutFromSubdir = do
     D.setCurrentDirectory ".."
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             quietCheckout . H.hashToString $ hash
@@ -916,7 +915,7 @@ testCommitFromSubdir = do
     D.setCurrentDirectory ".."
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             quietCheckout . H.hashToString $ hash
@@ -1498,7 +1497,7 @@ testCheckoutTruncatedHash = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             x <- quietCheckout . H.hashToString $ hash
@@ -1558,7 +1557,7 @@ testCheckoutBadTruncatedHash2 = do
     -- unlikely that this will be the actual hash
     eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" (Just Quiet)
 
-    eitherCheckoutResult @?= Left "Fatal: truncated hash does not match any stored hashes"
+    eitherCheckoutResult @?= Left "Fatal: ref \"aaaaaaaa\" does not match any branch names or stored hashes"
 
 -- always hashes to "aaaaaaaaa..." (40 'a's)
 mockHasher1 :: CommitHasher
@@ -1587,7 +1586,7 @@ testCheckoutCollidingTruncatedHashes = do
 
     eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') (Just Quiet)
 
-    eitherCheckoutSuccess @?= Left "Fatal: multiple hashes match specified truncated hash"
+    eitherCheckoutSuccess @?= Left "Fatal: multiple hashes or branch names match specified ref: [\"aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
 
 testCheckoutRelativeSyntaxCaret :: Assertion
 testCheckoutRelativeSyntaxCaret = do
@@ -1634,7 +1633,7 @@ testCheckoutRelativeSyntaxCaret = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             x <- quietCheckout . H.hashToString $ hash
@@ -1713,7 +1712,7 @@ testCheckoutRelativeSyntaxTilde = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             x <- quietCheckout . H.hashToString $ hash
@@ -1792,7 +1791,7 @@ testCheckoutTruncatedRelativeSyntax = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             x <- quietCheckout . H.hashToString $ hash
@@ -1869,7 +1868,7 @@ testCheckoutRelativeSyntaxTildeZero = do
     test1 first
 
     return ()
-    where   
+    where
         test1 :: Hash -> Assertion
         test1 hash = do
             x <- quietCheckout . H.hashToString $ hash
@@ -2385,6 +2384,234 @@ testDeleteNonexistentBranch = do
     eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
     eitherBranches @?= Right [Branch "master" commitHash True]
 
+testLogGivenBranch :: Assertion
+testLogGivenBranch = do
+    eitherSuccess <- runEitherT $ do
+        H.init (Just Quiet)
+
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+        bA <- H.createBranch "branch-a" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+        bB <- H.createBranch "branch-b" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+        bC <- H.createBranch "branch-c" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+        bD <- H.createBranch "branch-d" Nothing (Just Quiet)
+
+        let commits = [commitA, commitB, commitC, commitD]
+
+        let ref = H.hashToString . hash $ head commits
+        history <- reverse <$> H.log (Just "branch-c") Nothing (Just Quiet)
+        liftIO $ ([commitA, commitB, commitC]) @?= history
+
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft undefined eitherSuccess)
+    return ()
+
+testLogGivenBranchWithRelativeSyntax :: Assertion
+testLogGivenBranchWithRelativeSyntax = do
+    eitherSuccess <- runEitherT $ do
+        H.init (Just Quiet)
+
+        liftIO $ createFileWithContents "a" "a"
+        H.stage "a"
+        commitA <- noargCommit
+        bA <- H.createBranch "branch-a" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "b" "b"
+        H.stage "b"
+        commitB <- noargCommit
+        bB <- H.createBranch "branch-b" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "c" "c"
+        H.stage "c"
+        commitC <- noargCommit
+        bC <- H.createBranch "branch-c" Nothing (Just Quiet)
+
+        liftIO $ createFileWithContents "d" "d"
+        H.stage "d"
+        commitD <- noargCommit
+        bD <- H.createBranch "branch-d" Nothing (Just Quiet)
+
+        let commits = [commitA, commitB, commitC, commitD]
+
+        let ref = H.hashToString . hash $ head commits
+        history <- reverse <$> H.log (Just "branch-c^") Nothing (Just Quiet)
+        liftIO $ ([commitA, commitB]) @?= history
+
+    when (isLeft eitherSuccess) $ do
+        assertFailure (fromLeft undefined eitherSuccess)
+    return ()
+
+testCheckoutGivenBranch :: Assertion
+testCheckoutGivenBranch = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-1" Nothing (Just Quiet)
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-2" Nothing (Just Quiet)
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-3" Nothing (Just Quiet)
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 "branch-1"
+    test2 "branch-2"
+    test3 "branch-3"
+    test2 "branch-2"
+    test1 "branch-1"
+    test3 "branch-3"
+    test1 "branch-1"
+
+    return ()
+    where
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+testCheckoutGivenBranchWithRelativeSyntax :: Assertion
+testCheckoutGivenBranchWithRelativeSyntax = do
+    runEitherT $ H.init (Just Quiet)
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-1" Nothing (Just Quiet)
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-2" Nothing (Just Quiet)
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    runEitherT noargCommit
+    runEitherT $ H.createBranch "branch-3" Nothing (Just Quiet)
+
+    ----------------
+
+    -- try multiple combinations of gaps and orders and such
+    test1 "branch-2^"
+    test2 "branch-3~1"
+    test3 "branch-3~0"
+    test2 "branch-2"
+    test1 "branch-3~2"
+    test3 "branch-3"
+    test1 "branch-1"
+
+    return ()
+    where
+        test1 :: Hash -> Assertion
+        test1 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> Assertion
+        test2 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> Assertion
+        test3 hash = do
+            quietCheckout . H.hashToString $ hash
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+
+
 -- test delete GCs
 
 commandTests :: TestTree
@@ -2692,6 +2919,21 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `branch delete` when given a non-current branch"
         (runTest testCanDeleteNoncurrentBranch)
+    , testCase
+        "Testing command `branch delete` when given a non-current branch"
+        (runTest testCanDeleteNoncurrentBranch)
+    , testCase
+        "Testing command `log` when given a branch"
+        (runTest testLogGivenBranch)
+    , testCase
+        "Testing command `log` when given a branch with relative syntax"
+        (runTest testLogGivenBranchWithRelativeSyntax)
+    , testCase
+        "Testing command `checkout` when given a branch"
+        (runTest testCheckoutGivenBranch)
+    , testCase
+        "Testing command `checkout` when given a branch with relative syntax"
+        (runTest testCheckoutGivenBranchWithRelativeSyntax)
     ]
 
 tests :: TestTree

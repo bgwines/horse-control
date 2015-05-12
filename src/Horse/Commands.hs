@@ -187,7 +187,6 @@ setBranch branchName ref maybeVerbosity = do
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
 config :: Maybe String -> Maybe EmailAddress -> EitherT Error IO Config
@@ -618,7 +617,6 @@ getRelativePaths relativePath = do
 commitsHaveBeenMade :: EitherT Error IO Bool
 commitsHaveBeenMade = ((/=) Default.def) <$> HIO.loadHeadHash
 
-
 -- | Checks out the specified hash to the specified directory. *NOTE*:
 --   will entirely overwrite the contents of the specified directory;
 --   be careful.
@@ -679,7 +677,7 @@ refToHash unparsedRef = do
 
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
-        someHash -> untruncateHash . stringToHash $ someHash
+        someHash -> untruncateBaseRef someHash
     (hoistEither $ toAncestorDistance relatives) >>= applyRelatives base
     where
         parentSyntax :: Char
@@ -715,16 +713,23 @@ refToHash unparsedRef = do
         isRelativeSyntax ch
             = (ch == parentSyntax) || (ch == ancestorSyntax)
 
-        untruncateHash :: Hash -> EitherT Error IO Hash
-        untruncateHash hash = do
-            when (BS.null hash) $
+        untruncateBaseRef :: String -> EitherT Error IO Hash
+        untruncateBaseRef baseRef = do
+            when (Prelude.null baseRef) $
                 left "Fatal: can't untruncate the empty hash."
+
             allHashes <- HIO.loadAllHashes
-            let matching = filter ((==) hash . BS.take (BS.length hash)) allHashes
+            let matchingHashes = filter ((==) baseRef . hashToString . BS.take (length baseRef)) allHashes
+
+            allBranches <- HIO.loadAllBranches
+            let matchingBranches = filter ((==) baseRef . branchName) allBranches
+
+            let matching = matchingHashes ++ (map branchHash matchingBranches)
+
             case length matching of
-                0 -> left "Fatal: truncated hash does not match any stored hashes"
+                0 -> left $ "Fatal: ref " ++ (Prelude.show baseRef) ++ " does not match any branch names or stored hashes"
                 1 -> right $ head matching
-                _ -> left "Fatal: multiple hashes match specified truncated hash"
+                _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ (Prelude.show matching)
 
 -- * diffing
 

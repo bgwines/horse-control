@@ -169,7 +169,7 @@ deleteBranch branchNameToDelete maybeVerbosity = do
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
 
     unless (verbosity == Quiet) $
-        putStrLn' ("Deleted branch \"" ++ branchNameToDelete ++ "\"")
+        putStrLn' ("Deleted branch \"" ++ branchNameToDelete ++ "\"" ++ " (was " ++ (take 7 . hashToString $ branchHash branchToDelete) ++ ")")
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -182,8 +182,7 @@ listBranches maybeVerbosity = do
 
     branches <- HIO.loadAllBranches
 
-    unless (verbosity == Quiet) $
-        print' branches
+    unless (verbosity == Quiet) $ liftIO . HP.printBranches $ branches
 
     liftIO $ D.setCurrentDirectory userDirectory
 

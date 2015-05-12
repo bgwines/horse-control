@@ -9,6 +9,7 @@ module Horse.Printing
 , printCommit
 , printStatus
 , printDiff
+, printBranches
 ) where
 
 import Rainbow
@@ -73,7 +74,7 @@ printCommit (Commit author date hash _ diff message) = do
     putChunkLn $ chunk dateLine
 
     putChunkLn $ chunk ("" :: ByteString)
-    putChunk $ chunk ("    " :: ByteString)
+    putChunk   $ chunk ("    " :: ByteString)
     putChunkLn $ chunk (ByteString.pack message) & fore brightWhite
     putChunkLn $ chunk ("" :: ByteString)
 
@@ -83,7 +84,7 @@ printCommit (Commit author date hash _ diff message) = do
 printCommitStats :: Commit -> IO ()
 printCommitStats commit = do
     putStrLn $ "[<branch> "
-        ++ (Prelude.show . ByteString.take 8 $ hash commit)
+        ++ (Prelude.show . ByteString.take 7 $ hash commit)
         ++  "] " ++ (message commit)
 
     let numFiles = FD.numFilesAffected $ diffWithPrimaryParent commit
@@ -108,3 +109,21 @@ printStatus (Status stagingArea unstagedFiles) = do
 
 printDiff :: FD.Diff -> IO ()
 printDiff = FD.printDiff
+
+printBranches :: [Branch] -> IO ()
+printBranches branches = mapM_ (printBranch maxNameLength) branches
+    where
+        maxNameLength :: Int
+        maxNameLength = maximum . map (length . branchName) $ branches
+
+printBranch :: Int -> Branch -> IO ()
+printBranch maxNameLength (Branch branchName branchHash isCurrentBranch) = do
+    let prefix :: ByteString = if isCurrentBranch
+        then "* "
+        else "  "
+    let padding :: ByteString = ByteString.pack $ replicate (maxNameLength - (length branchName)) ' '
+    let name :: ByteString = (ByteString.pack branchName) <> padding
+    let hash :: ByteString = " (" <> ByteString.take 7 branchHash <> ")"
+    putChunk $ chunk prefix
+    putChunk $ chunk name & fore green
+    putChunkLn $ chunk hash

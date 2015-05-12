@@ -26,29 +26,28 @@ import qualified Data.ByteString.Char8 as ByteString
 import Horse.Types
 import Horse.Utils (hashToString)
 
-printLog :: Maybe Hash -> [Commit] -> IO ()
-printLog maybeHeadHash
+printLog :: Hash -> [Commit] -> [Branch] -> IO ()
+printLog headHash commits branches
     = mapM_ (\c ->
         printCommitInLog c
-            (maybeBoolToBool $ ((==) $ hash c) <$> maybeHeadHash)
+            (hash c == headHash)
+            ( map branchName
+            . filter ((==) (hash c) . branchHash)
+            $ branches )
         )
-    where
-        maybeBoolToBool :: Maybe Bool -> Bool
-        maybeBoolToBool (Just False) = False
-        maybeBoolToBool (Just True) = True
-        maybeBoolToBool Nothing = False
+        commits
 
 -- | Prints a commit in `log` format. The 'Bool' represents whether the
 --   specified commit is `HEAD` or not.
-printCommitInLog :: Commit -> Bool -> IO ()
-printCommitInLog (Commit author date hash _ diff message) isHead = do
+printCommitInLog :: Commit -> Bool -> [String] -> IO ()
+printCommitInLog
+    (Commit author date hash _ diff message)
+    isHead
+    branchNames = do
     let s :: ByteString = "* " <> shortHash <> " - " <> (ByteString.pack . show $ date)
     putChunk $ chunk s & bold
 
-    let headAnnotation :: ByteString = if isHead
-        then " (HEAD)"
-        else ""
-    putChunkLn $ chunk headAnnotation
+    putChunkLn $ chunk (" " <> referencesAnnotation) & bold
 
     putChunk $ chunk ("|        " :: ByteString) & fore cyan
     putChunkLn $ chunk (ByteString.pack message) & fore brightWhite
@@ -59,6 +58,19 @@ printCommitInLog (Commit author date hash _ diff message) isHead = do
     where
         shortHash :: ByteString
         shortHash = ByteString.take 7 hash
+
+        references :: [String]
+        references = if isHead
+            then "HEAD" : branchNames
+            else branchNames
+
+        referencesAnnotation :: ByteString
+        referencesAnnotation = if null references
+            then ""
+            else ByteString.pack
+                . (\a -> "(" ++ a ++ ")")
+                . (\a -> take (length a - 2) a) -- for trailing ", "
+                $ foldl (flip (++) . (++) ", ") "" references
 
 -- | Prints a commit in `log` format. The 'Bool' represents whether the
 --   specified commit is `HEAD` or not.

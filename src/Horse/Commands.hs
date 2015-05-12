@@ -579,7 +579,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
 
             headHash <- HIO.loadHeadHash
             unless (verbosity == Quiet) $ do
-                liftIO $ HP.printLog (Just headHash) history
+                HIO.loadAllBranches >>= liftIO . HP.printLog headHash history
             right history
         else right []
 

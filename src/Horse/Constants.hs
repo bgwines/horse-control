@@ -77,7 +77,6 @@ import Horse.Types
 import Horse.Utils
     ( maybeToEither
     , stringToHash
-    , putStrLn'
     , iterateMaybe
     , toMaybe
     , (</>)

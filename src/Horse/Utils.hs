@@ -7,8 +7,6 @@ module Horse.Utils
 , hashToString
 
 -- * general
-, print'
-, putStrLn'
 , iterateMaybe
 , toMaybe
 , whenM
@@ -18,6 +16,9 @@ module Horse.Utils
 , (|<$>|)
 , (</>)
 ) where
+
+import Prelude hiding (print, putStrLn)
+import qualified Prelude (print)
 
 import Control.Monad
 import Control.Monad.Trans.Either
@@ -58,14 +59,6 @@ hashToString :: Hash -> String
 hashToString = map Convert.convert . unpack
 
 -- * general
-
--- | `print` but for the `EitherT` monad
-print' :: (Show a) => a -> EitherT b IO ()
-print' = liftIO . print
-
--- | `putStrLn` but for the `EitherT` monad
-putStrLn' :: String -> EitherT a IO ()
-putStrLn' = liftIO . putStrLn
 
 -- | Wrap in a `Just` if the predicate function returns `True`
 toMaybe :: a -> (a -> Bool) -> Maybe a

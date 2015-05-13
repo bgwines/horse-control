@@ -8,28 +8,30 @@ module Horse.Printing
 , printCommitStats
 , printCommit
 , printStatus
-, printDiff
+, Horse.Printing.printDiff
 , printBranches
 ) where
 
-import Rainbow
+import Prelude hiding (print, putStr, putStrLn)
+import qualified Prelude (print)
+
+import Rainbow hiding (putChunk, putChunkLn)
 
 import Data.Monoid
 import Control.Applicative
 
 import qualified Filediff.Types as FD
 import qualified Filediff.Stats as FD
-import qualified Filediff.Printing as FD
 
 import qualified Data.ByteString.Char8 as ByteString
 
 import Horse.Types
 import Horse.Utils (hashToString)
 
-printLog :: Hash -> [Commit] -> [Branch] -> IO ()
-printLog headHash commits branches
+printLog :: Printer -> Hash -> [Commit] -> [Branch] -> IO ()
+printLog printer headHash commits branches
     = mapM_ (\c ->
-        printCommitInLog c
+        printCommitInLog printer c
             (hash c == headHash)
             ( map branchName
             . filter ((==) (hash c) . branchHash)
@@ -39,8 +41,9 @@ printLog headHash commits branches
 
 -- | Prints a commit in `log` format. The 'Bool' represents whether the
 --   specified commit is `HEAD` or not.
-printCommitInLog :: Commit -> Bool -> [String] -> IO ()
+printCommitInLog :: Printer -> Commit -> Bool -> [String] -> IO ()
 printCommitInLog
+    (Printer putStr putStrLn putChunk putChunkLn _)
     (Commit author date hash _ diff message)
     isHead
     branchNames = do
@@ -74,8 +77,11 @@ printCommitInLog
 
 -- | Prints a commit in `log` format. The 'Bool' represents whether the
 --   specified commit is `HEAD` or not.
-printCommit :: Commit -> IO ()
-printCommit (Commit author date hash _ diff message) = do
+printCommit :: Printer -> Commit -> IO ()
+printCommit
+    (Printer putStr putStrLn putChunk putChunkLn printDiff)
+    (Commit author date hash _ diff message)
+    = do
     let hashLine :: ByteString = "commit " <> hash
     putChunkLn $ chunk hashLine & fore yellow
 
@@ -91,17 +97,17 @@ printCommit (Commit author date hash _ diff message) = do
     putChunkLn $ chunk ("" :: ByteString)
 
     putChunkLn $ chunk ("diff --horse-control" :: ByteString) & bold
-    FD.printDiff diff
+    printDiff diff
 
-printCommitStats :: Commit -> IO ()
-printCommitStats commit = do
+printCommitStats :: Printer -> Commit -> IO ()
+printCommitStats (Printer putStr putStrLn putChunk putChunkLn _) commit = do
     putStrLn $ "[<branch> "
         ++ (Prelude.show . ByteString.take 7 $ hash commit)
         ++  "] " ++ (message commit)
 
     let numFiles = FD.numFilesAffected $ diffWithPrimaryParent commit
-    let numAdds = FD.numAddedLines     $ diffWithPrimaryParent commit
-    let numDels = FD.numDeletedLines   $ diffWithPrimaryParent commit
+    let numAdds  = FD.numAddedLines    $ diffWithPrimaryParent commit
+    let numDels  = FD.numDeletedLines  $ diffWithPrimaryParent commit
     let filesString = if numFiles == 1
         then " file"
         else " files"
@@ -110,26 +116,33 @@ printCommitStats commit = do
         ++ Prelude.show numAdds ++ " insertions(+), "
         ++ Prelude.show numDels ++ " deletions(-)"
 
-printStatus :: Status -> IO ()
-printStatus (Status stagingArea unstagedFiles) = do
+printStatus :: Printer -> Status -> IO ()
+printStatus
+    (Printer putStr putStrLn putChunk putChunkLn _)
+    (Status stagingArea unstagedFiles)
+    = do
     putStrLn "Staged changes:"
-    print stagingArea
+    putStrLn . Prelude.show $ stagingArea
     putStrLn ""
 
     putStrLn "Unstaged changes:"
-    print unstagedFiles
+    putStrLn . Prelude.show $ unstagedFiles
 
-printDiff :: FD.Diff -> IO ()
-printDiff = FD.printDiff
+printDiff :: Printer -> FD.Diff -> IO ()
+printDiff (Printer _ _ _ _ printDiff) = printDiff
 
-printBranches :: [Branch] -> IO ()
-printBranches branches = mapM_ (printBranch maxNameLength) branches
+printBranches :: Printer -> [Branch] -> IO ()
+printBranches printer branches = mapM_ (printBranch printer maxNameLength) branches
     where
         maxNameLength :: Int
         maxNameLength = maximum . map (length . branchName) $ branches
 
-printBranch :: Int -> Branch -> IO ()
-printBranch maxNameLength (Branch branchName branchHash isCurrentBranch) = do
+printBranch :: Printer -> Int -> Branch -> IO ()
+printBranch
+    (Printer putStr putStrLn putChunk putChunkLn _)
+    maxNameLength
+    (Branch branchName branchHash isCurrentBranch)
+    = do
     let prefix :: ByteString = if isCurrentBranch
         then "* "
         else "  "

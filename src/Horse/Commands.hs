@@ -34,9 +34,9 @@ module Horse.Commands
 
   -- * branches
 , Horse.Commands.createBranch
-, Horse.Commands.createBranchSetCurrent
+--, Horse.Commands.createBranchSetCurrent
 , Horse.Commands.deleteBranch
-, Horse.Commands.setBranch
+--, Horse.Commands.setBranch
 , Horse.Commands.listBranches
 ) where
 
@@ -106,8 +106,6 @@ import Horse.Utils
     ( stringToHash
     , hashToString
     , (|<$>|)
-    , print'
-    , putStrLn'
     , maybeToEither
     , fromEitherMaybeDefault
     , (</>)
@@ -119,18 +117,21 @@ import qualified Horse.Printing as HP
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
 
-createBranchSetCurrent :: String -> Maybe String -> Maybe Verbosity -> EitherT Error IO Branch
-createBranchSetCurrent branchName maybeRef maybeVerbosity =
-    createBranch' branchName maybeRef maybeVerbosity True
+--createBranchSetCurrent :: String -> Maybe String -> Printer -> EitherT Error IO Branch
+--createBranchSetCurrent branchName maybeRef printer =
+--    createBranch' branchName maybeRef True
 
-createBranch :: String -> Maybe String -> Maybe Verbosity -> EitherT Error IO Branch
-createBranch branchName maybeRef maybeVerbosity =
-    createBranch' branchName maybeRef maybeVerbosity False
+createBranch :: String -> Maybe String -> Printer -> EitherT Error IO Branch
+createBranch branchName maybeRef printer =
+    createBranch' branchName maybeRef False printer
 
-createBranch' :: String -> Maybe String -> Maybe Verbosity -> Bool -> EitherT Error IO Branch
-createBranch' branchName maybeRef maybeVerbosity setCurrent = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+createBranch' :: String -> Maybe String -> Bool -> Printer -> EitherT Error IO Branch
+createBranch'
+    branchName
+    maybeRef
+    setCurrent
+    (Printer putStr putStrLn putChunk putChunkLn _)
+    = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -141,18 +142,19 @@ createBranch' branchName maybeRef maybeVerbosity setCurrent = do
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-    unless (verbosity == Quiet) $
-        putStrLn' ("Created branch \"" ++ branchName ++ "\", pointing to commit " ++ (hashToString hash))
+    --unless (verbosity == Quiet) $
+    liftIO . putStrLn $ ("Created branch \"" ++ branchName ++ "\", pointing to commit " ++ (hashToString hash))
 
     right newBranch
     --where
     --    makeNotCurrent :: Branch -> Branch
     --    makeNotCurrent b@(Branch name hash _) = Branch name hash False
 
-deleteBranch :: String -> Maybe Verbosity -> EitherT Error IO ()
-deleteBranch branchNameToDelete maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+deleteBranch :: String -> Printer -> EitherT Error IO ()
+deleteBranch
+    branchNameToDelete
+    (Printer putStr putStrLn putChunk putChunkLn _)
+    = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -168,34 +170,30 @@ deleteBranch branchNameToDelete maybeVerbosity = do
 
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
 
-    unless (verbosity == Quiet) $
-        putStrLn' ("Deleted branch \"" ++ branchNameToDelete ++ "\"" ++ " (was " ++ (take 7 . hashToString $ branchHash branchToDelete) ++ ")")
+    --unless (verbosity == Quiet) $
+    liftIO . putStrLn $ ("Deleted branch \"" ++ branchNameToDelete ++ "\"" ++ " (was " ++ (take 7 . hashToString $ branchHash branchToDelete) ++ ")")
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-listBranches :: Maybe Verbosity -> EitherT Error IO [Branch]
-listBranches maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+listBranches :: Printer -> EitherT Error IO [Branch]
+listBranches printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
     branches <- HIO.loadAllBranches
 
-    unless (verbosity == Quiet) $ liftIO . HP.printBranches $ branches
+    liftIO . HP.printBranches printer $ branches
 
     liftIO $ D.setCurrentDirectory userDirectory
 
     right branches
 
-setBranch :: String -> String -> Maybe Verbosity -> EitherT Error IO ()
-setBranch branchName ref maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
+--setBranch :: String -> String -> Printer -> EitherT Error IO ()
+--setBranch branchName ref printer = do
+--    userDirectory <- liftIO D.getCurrentDirectory
+--    HF.assertIsRepositoryAndCdToRoot
 
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
-
-    liftIO $ D.setCurrentDirectory userDirectory
+--    liftIO $ D.setCurrentDirectory userDirectory
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
@@ -228,10 +226,8 @@ config maybeName maybeEmail = do
 
 -- | Initializes an empty repository in the current directory. If
 --   one currently exists, it aborts.
-init :: Maybe Verbosity -> EitherT Error IO ()
-init maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+init :: Printer -> EitherT Error IO ()
+init (Printer putStr putStrLn putChunk putChunkLn _) = do
     whenM (liftIO $ HF.isInRepository ".") $
         left "Fatal: directory is or is subdirectory of another horse-control repo"
 
@@ -250,16 +246,14 @@ init maybeVerbosity = do
         mapM_ (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
         currDir <- D.getCurrentDirectory
-        unless (verbosity == Quiet) $
-            putStrLn $ "Initialized existing horse-control repository in"
+        --unless (verbosity == Quiet) $
+        liftIO . putStrLn $ "Initialized existing horse-control repository in"
                 ++ currDir ++ "/" ++ HC.repositoryDataDir
 
 -- | Gets and prints the difference between the current state of the
 -- filesystem and the state of the filesystem at HEAD.
-status :: Maybe Verbosity -> EitherT Error IO Status
-status maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+status :: Printer -> EitherT Error IO Status
+status printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -267,8 +261,7 @@ status maybeVerbosity = do
     unstagedFiles <- loadUnstagedFiles
     let currentStatus = Status stagingArea unstagedFiles
 
-    unless (verbosity == Quiet) $ do
-        liftIO $ HP.printStatus currentStatus
+    liftIO $ HP.printStatus printer currentStatus
 
     liftIO $ D.setCurrentDirectory userDirectory
     right currentStatus
@@ -290,10 +283,8 @@ status maybeVerbosity = do
         none :: (a -> Bool) -> [a] -> Bool
         none f = not . any f
 
-untrack :: String -> Maybe Verbosity -> EitherT Error IO ()
-untrack path maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+untrack :: String -> Printer -> EitherT Error IO ()
+untrack path (Printer putStr putStrLn putChunk putChunkLn _) = do
     -- TODO: figure out how to share this
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
@@ -306,8 +297,8 @@ untrack path maybeVerbosity = do
     HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . nub . (:) relativePath
 
     untrackingStagedFiles <- (any (flip isPrefixOf $ relativePath) . files) <$> HIO.loadStagingArea
-    unless (verbosity == Quiet) $ do
-        putStrLn' $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
+    --unless (verbosity == Quiet) $ do
+    liftIO . putStrLn $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -329,10 +320,8 @@ retrack path = do
         removeSubdirsOf :: FilePath -> [FilePath] -> [FilePath]
         removeSubdirsOf path = filter (not . isPrefixOf path)
 
-listUntrackedPaths :: Maybe Verbosity -> EitherT Error IO [FilePath]
-listUntrackedPaths maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+listUntrackedPaths :: Printer -> EitherT Error IO [FilePath]
+listUntrackedPaths (Printer putStr putStrLn putChunk putChunkLn _) = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -340,8 +329,8 @@ listUntrackedPaths maybeVerbosity = do
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-    unless (verbosity == Quiet) $ do
-        print' paths
+    --unless (verbosity == Quiet) $ do
+    liftIO . putStrLn $ Prelude.show paths
 
     right paths
 
@@ -413,15 +402,15 @@ stage path = do
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
-commitAmend :: CommitHasher -> Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
-commitAmend hasher maybeMessage maybeVerbosity = do
+commitAmend :: CommitHasher -> Maybe String -> Printer -> EitherT Error IO Commit
+commitAmend hasher maybeMessage printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
     unlessM commitsHaveBeenMade $
         left "Fatal: cannot amend when no commits have been made."
 
-    latestCommit <- commit hasher maybeMessage maybeVerbosity
+    latestCommit <- commit hasher maybeMessage printer
     squashedCommit <- squash hasher (hashToString . fromJust . parentHash $ latestCommit)
 
     liftIO $ D.setCurrentDirectory userDirectory
@@ -430,9 +419,8 @@ commitAmend hasher maybeMessage maybeVerbosity = do
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area. 'CommitHasher' is taken in for mocking
 --   for testing purposes.
-commit :: CommitHasher -> Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
-commit hasher maybeMessage maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
+commit :: CommitHasher -> Maybe String -> Printer -> EitherT Error IO Commit
+commit hasher maybeMessage printer = do
     let message = fromMaybe "default message" maybeMessage
 
     userDirectory <- liftIO D.getCurrentDirectory
@@ -479,11 +467,9 @@ commit hasher maybeMessage maybeVerbosity = do
         HIO.writeStagingArea (Default.def :: StagingArea)
         D.setCurrentDirectory userDirectory
 
-    when (verbosity == Verbose) $ do
-        liftIO $ HP.printCommit completeCommit
+    liftIO $ HP.printCommit printer completeCommit
 
-    unless (verbosity == Quiet) $ do
-        liftIO $ HP.printCommitStats completeCommit
+    liftIO $ HP.printCommitStats printer completeCommit
 
     right completeCommit
 
@@ -493,7 +479,7 @@ squash hasher ref = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
-    historyToRoot <- log Nothing Nothing (Just Quiet)
+    historyToRoot <- log Nothing Nothing quietPrinter
 
     endHash <- refToHash ref
     let squashedCommit = getSquashedCommit historyToRoot endHash
@@ -529,7 +515,7 @@ squash hasher ref = do
 
 -- | Sets the contents of the filesystem to the state it had in the
 --   specified commit.
-checkout :: String -> Maybe Verbosity -> EitherT Error IO ()
+checkout :: String -> Printer -> EitherT Error IO ()
 checkout ref _ = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
@@ -543,17 +529,15 @@ checkout ref _ = do
 
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
-show :: Maybe String -> Maybe Verbosity -> EitherT Error IO Commit
-show maybeRef maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+show :: Maybe String -> Printer -> EitherT Error IO Commit
+show maybeRef printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
     ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
 
-    when (verbosity /= Quiet) $ liftIO (HP.printCommit commit)
+    liftIO (HP.printCommit printer commit)
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -563,10 +547,8 @@ show maybeRef maybeVerbosity = do
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
 --   Pass in a `Just` `Int` to specify the number of commits back to go
 --   in the history.
-log :: Maybe String -> Maybe Int -> Maybe Verbosity -> EitherT Error IO [Commit]
-log maybeRef maybeNumCommits maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+log :: Maybe String -> Maybe Int -> Printer -> EitherT Error IO [Commit]
+log maybeRef maybeNumCommits printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -578,8 +560,7 @@ log maybeRef maybeNumCommits maybeVerbosity = do
             history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
 
             headHash <- HIO.loadHeadHash
-            unless (verbosity == Quiet) $ do
-                HIO.loadAllBranches >>= liftIO . HP.printLog headHash history
+            HIO.loadAllBranches >>= liftIO . HP.printLog printer headHash history
             right history
         else right []
 
@@ -588,10 +569,8 @@ log maybeRef maybeNumCommits maybeVerbosity = do
     right history
 
 -- | Prints out the difference between the working directory and HEAD
-diff :: Maybe Verbosity -> EitherT Error IO FD.Diff
-diff maybeVerbosity = do
-    let verbosity = fromMaybe Normal maybeVerbosity
-
+diff :: Printer -> EitherT Error IO FD.Diff
+diff printer = do
     userDirectory <- liftIO D.getCurrentDirectory
     HF.assertIsRepositoryAndCdToRoot
 
@@ -599,8 +578,7 @@ diff maybeVerbosity = do
         left "Fatal: can't diff with HEAD when no commits have been made."
 
     theDiff <- diffWithHEAD Nothing
-    when (verbosity /= Quiet) $ do
-        liftIO $ HP.printDiff theDiff
+    liftIO $ HP.printDiff printer theDiff
 
     liftIO $ D.setCurrentDirectory userDirectory
 
@@ -758,7 +736,7 @@ diffWithHEAD maybeFilesToDiff = do
     whenM commitsHaveBeenMade $ do
         HIO.loadHeadHash >>= checkoutToDirectory headDir
 
-    untrackedPaths <- listUntrackedPaths (Just Quiet)
+    untrackedPaths <- listUntrackedPaths quietPrinter
     allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] ([HC.repositoryDataDir] ++ untrackedPaths)
 
     liftIO $ D.removeDirectoryRecursive headDir

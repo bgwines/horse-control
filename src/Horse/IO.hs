@@ -78,8 +78,7 @@ import Control.Monad.IO.Class (liftIO, MonadIO(..))
 import Horse.Types
 import Horse.Utils
     ( maybeToEither
-    , stringToHash
-    , putStrLn' )
+    , stringToHash )
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
 

@@ -40,6 +40,9 @@ Currently exposed commands and functionality
 * untrack --list
 * retrack
 * diff
+* branch create
+* branch delete
+* branch list
 
 ### additional ###
 

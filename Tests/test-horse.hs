@@ -90,14 +90,14 @@ createFileWithContents filepath contents = do
     IO.hClose handle
 
 quietCommit :: Maybe String -> EitherT Error IO Commit
-quietCommit m = H.commit def m (Just Quiet)
+quietCommit m = H.commit def m quietPrinter
 
 noargCommit :: EitherT Error IO Commit
-noargCommit = H.commit def Nothing (Just Quiet)
+noargCommit = H.commit def Nothing quietPrinter
 
 getStatus :: IO Status
 getStatus = do
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     assertBool "`status` should not fail" (isRight eitherStatus)
     return $ fromRight undefined eitherStatus
 
@@ -160,7 +160,7 @@ filesystemTests = testGroup "unit tests (Horse.Filesystem)"
 
 testLoadCommitErrorCase :: Assertion
 testLoadCommitErrorCase = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherCommit <- runEitherT $ H.loadCommit "xyz"
     eitherCommit @?= Left "Could not fetch commit for key \"xyz\"."
@@ -174,33 +174,33 @@ ioTests = testGroup "unit tests (Horse.IO)"
 
 testRelativeSyntaxErrorCase :: Assertion
 testRelativeSyntaxErrorCase = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    eitherLogResult <- runEitherT $ H.log (Just "HEAD^~1") Nothing (Just Quiet)
+    eitherLogResult <- runEitherT $ H.log (Just "HEAD^~1") Nothing quietPrinter
     eitherLogResult @?= Left "Fatal: cannot combine '^' and '~' syntax."
 
 testLogTooFarBackSyntax :: Assertion
 testLogTooFarBackSyntax = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    eitherLogResult <- runEitherT $ H.log (Just "HEAD~2") Nothing (Just Quiet)
+    eitherLogResult <- runEitherT $ H.log (Just "HEAD~2") Nothing quietPrinter
     eitherLogResult @?= Left "Fatal: specified relative commit is too far back in history; no commits exist there."
 
-    eitherLogResult2 <- runEitherT $ H.log (Just "HEAD^^") Nothing (Just Quiet)
+    eitherLogResult2 <- runEitherT $ H.log (Just "HEAD^^") Nothing quietPrinter
     eitherLogResult2 @?= Left "Fatal: specified relative commit is too far back in history; no commits exist there."
 
 
 testLog :: Assertion
 testLog = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -220,7 +220,7 @@ testLog = do
 
         let commits = [commitA, commitB, commitC, commitD]
 
-        history <- reverse <$> H.log (Just "HEAD") Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just "HEAD") Nothing quietPrinter
         liftIO $ commits @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
@@ -228,9 +228,9 @@ testLog = do
 
 testLogEdgeCase1 :: Assertion
 testLogEdgeCase1 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
-        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
+        history <- reverse <$> H.log Nothing Nothing quietPrinter
 
         liftIO $ [] @?= history
 
@@ -240,7 +240,7 @@ testLogEdgeCase1 = do
 
 testLogEdgeCase2 :: Assertion
 testLogEdgeCase2 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -261,7 +261,7 @@ testLogEdgeCase2 = do
         let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ commits !! 2
-        history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just ref) Nothing quietPrinter
         liftIO $ (take (2+1) commits) @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
@@ -269,7 +269,7 @@ testLogEdgeCase2 = do
 
 testLogEdgeCase3 :: Assertion
 testLogEdgeCase3 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -290,10 +290,10 @@ testLogEdgeCase3 = do
         let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ head commits
-        history <- reverse <$> H.log (Just ref) Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just ref) Nothing quietPrinter
         liftIO $ ([head commits]) @?= history
 
-        history2 <- H.log Nothing (Just 2) (Just Quiet)
+        history2 <- H.log Nothing (Just 2) quietPrinter
         liftIO $ (length history2) @?= 2
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
@@ -301,7 +301,7 @@ testLogEdgeCase3 = do
 
 testLogEdgeCase4 :: Assertion
 testLogEdgeCase4 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -319,7 +319,7 @@ testLogEdgeCase4 = do
         H.stage "d"
         noargCommit
 
-        history <- reverse <$> H.log Nothing (Just 0) (Just Quiet)
+        history <- reverse <$> H.log Nothing (Just 0) quietPrinter
         liftIO $ [] @?= history
     when (isLeft eitherSuccess) $ do
         assertFailure (fromLeft undefined eitherSuccess)
@@ -327,7 +327,7 @@ testLogEdgeCase4 = do
 
 testStage :: Assertion
 testStage = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
 
@@ -341,7 +341,7 @@ testStage = do
 
 testStageDirectory :: Assertion
 testStageDirectory = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -362,7 +362,7 @@ testStageDirectory = do
 
 testStageDirectoryEdgeCase1 :: Assertion
 testStageDirectoryEdgeCase1 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -386,7 +386,7 @@ testStageDirectoryEdgeCase1 = do
 
 testStageDirectoryEdgeCase2 :: Assertion
 testStageDirectoryEdgeCase2 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -410,7 +410,7 @@ testStageDirectoryEdgeCase2 = do
 
 testStageDirectoryEdgeCase3 :: Assertion
 testStageDirectoryEdgeCase3 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -435,41 +435,41 @@ testStageDirectoryEdgeCase3 = do
 
 testStageDirectoryEdgeCase4 :: Assertion
 testStageDirectoryEdgeCase4 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
 
     runEitherT $ H.stage "."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
 testStageDirectoryEdgeCase5 :: Assertion
 testStageDirectoryEdgeCase5 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
 
     runEitherT $ H.stage "./"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
 testStageDirectoryEdgeCase6 :: Assertion
 testStageDirectoryEdgeCase6 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "dir"
     createFileWithContents "a" "a"
 
     runEitherT $ H.stage "dir/.."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
 testStageNonexistentFile :: Assertion
 testStageNonexistentFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -477,7 +477,7 @@ testStageNonexistentFile = do
 
 testStageNonexistentDirectory :: Assertion
 testStageNonexistentDirectory = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -485,42 +485,42 @@ testStageNonexistentDirectory = do
 
 testStagePathOutsideOfRepo :: Assertion
 testStagePathOutsideOfRepo = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherStagingArea <- runEitherT $ H.stage "../a"
     eitherStagingArea @?= Left "Can't stage file or directory outside of the repository: ../a"
 
 testUnstagePathOutsideOfRepo :: Assertion
 testUnstagePathOutsideOfRepo = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherStagingArea <- runEitherT $ H.unstage "../a"
     eitherStagingArea @?= Left "Can't unstage file or directory outside of the repository: ../a"
 
 testStatusCase1 :: Assertion
 testStatusCase1 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
 
     assertBool "`status` command should not fail" (isRight eitherStatus)
     stagingArea <$> eitherStatus @?= Right def
 
 testStatusCase2 :: Assertion
 testStatusCase2 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
 
     assertBool "`status` command should not fail" (isRight eitherStatus)
     unstagedFiles <$> eitherStatus @?= Right def
 
 testStatusCase3 :: Assertion
 testStatusCase3 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
 
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
@@ -531,14 +531,14 @@ testStatusCase3 = do
 
 testStatusCase4 :: Assertion
 testStatusCase4 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
 
     runEitherT noargCommit
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
     status @?= def
@@ -549,7 +549,7 @@ testStatusCase4 = do
 
     appendFile "a" "aaaa"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
     status @?= Status (StagingArea [] [] []) ["a"]
@@ -558,7 +558,7 @@ testStatusCase4 = do
 
 testStatusCase5 :: Assertion
 testStatusCase5 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -566,7 +566,7 @@ testStatusCase5 = do
 
     appendFile "a" "bcd"
     runEitherT $ H.stage "a"
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
     status @?= Status (StagingArea [] ["a"] []) []
@@ -575,24 +575,24 @@ testStatusCase5 = do
 
 testInit :: Assertion
 testInit = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
 testInitTwiceInSameDirectory :: Assertion
 testInitTwiceInSameDirectory = do
-    eitherInit1 <- runEitherT $ H.init (Just Quiet)
-    eitherInit2 <- runEitherT $ H.init (Just Quiet)
+    eitherInit1 <- runEitherT $ H.init quietPrinter
+    eitherInit2 <- runEitherT $ H.init quietPrinter
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
     assertBool "Fatal: command should fail" (isLeft eitherInit2)
 
 testInitAgainInSubdir :: Assertion
 testInitAgainInSubdir = do
-    eitherInit1 <- runEitherT $ H.init (Just Quiet)
+    eitherInit1 <- runEitherT $ H.init quietPrinter
     D.createDirectory "x"
     D.setCurrentDirectory "x"
-    eitherInit2 <- runEitherT $ H.init (Just Quiet)
+    eitherInit2 <- runEitherT $ H.init quietPrinter
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
     eitherInit2 @?= Left "Fatal: directory is or is subdirectory of another horse-control repo"
@@ -603,19 +603,19 @@ testNoRepo :: (Eq a, Show a) => EitherT Error IO a -> Assertion
 testNoRepo = (=<<) ((@?=) $ Left "Fatal: Not a horse repository (or any of the ancestor directories).") . runEitherT
 
 testNoRepoStatus :: Assertion
-testNoRepoStatus = testNoRepo $ H.status (Just Quiet)
+testNoRepoStatus = testNoRepo $ H.status quietPrinter
 
 testNoRepoStage :: Assertion
 testNoRepoStage = testNoRepo $ H.stage def
 
 testNoRepoCheckout :: Assertion
-testNoRepoCheckout = testNoRepo $ H.checkout def (Just Quiet)
+testNoRepoCheckout = testNoRepo $ H.checkout def quietPrinter
 
 testNoRepoCommit :: Assertion
 testNoRepoCommit = testNoRepo $ noargCommit
 
 testNoRepoShow :: Assertion
-testNoRepoShow = testNoRepo $ H.show def (Just Quiet)
+testNoRepoShow = testNoRepo $ H.show def quietPrinter
 
 testNoRepoLog :: Assertion
 testNoRepoLog = testNoRepo $ H.log def def def
@@ -627,32 +627,32 @@ testNoRepoUnstage :: Assertion
 testNoRepoUnstage = testNoRepo $ H.unstage def
 
 testNoRepoUntrack :: Assertion
-testNoRepoUntrack = testNoRepo $ H.untrack def (Just Quiet)
+testNoRepoUntrack = testNoRepo $ H.untrack def quietPrinter
 
 testNoRepoRetrack :: Assertion
 testNoRepoRetrack = testNoRepo $ H.retrack def
 
 testNoRepoListUntracked :: Assertion
-testNoRepoListUntracked = testNoRepo $ H.listUntrackedPaths (Just Quiet)
+testNoRepoListUntracked = testNoRepo $ H.listUntrackedPaths quietPrinter
 
 testNoRepoDiff :: Assertion
-testNoRepoDiff = testNoRepo $ H.diff (Just Quiet)
+testNoRepoDiff = testNoRepo $ H.diff quietPrinter
 
 testNoRepoBranchList :: Assertion
-testNoRepoBranchList = testNoRepo $ H.listBranches (Just Quiet)
+testNoRepoBranchList = testNoRepo $ H.listBranches quietPrinter
 
 testNoRepoBranchDelete :: Assertion
-testNoRepoBranchDelete = testNoRepo $ H.deleteBranch def (Just Quiet)
+testNoRepoBranchDelete = testNoRepo $ H.deleteBranch def quietPrinter
 
 testNoRepoBranchCreate :: Assertion
-testNoRepoBranchCreate = testNoRepo $ H.createBranch def Nothing (Just Quiet)
+testNoRepoBranchCreate = testNoRepo $ H.createBranch def Nothing quietPrinter
 
-testNoRepoBranchSet :: Assertion
-testNoRepoBranchSet = testNoRepo $ H.setBranch def def (Just Quiet)
+--testNoRepoBranchSet :: Assertion
+--testNoRepoBranchSet = testNoRepo $ H.setBranch def def quietPrinter
 
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
@@ -662,17 +662,17 @@ testCheckoutChangesHEAD = do
     runEitherT $ H.stage "b"
     eitherSecondCommit <- runEitherT noargCommit
 
-    history1 <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    history1 <- runEitherT $ H.log Nothing Nothing quietPrinter
     length <$> history1 @?= Right 2
 
     let firstHash = hash $ fromRight undefined eitherFirstCommit
-    runEitherT $ H.checkout (H.hashToString firstHash) (Just Quiet)
-    history2 <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    runEitherT $ H.checkout (H.hashToString firstHash) quietPrinter
+    history2 <- runEitherT $ H.log Nothing Nothing quietPrinter
     length <$> history2 @?= Right 1
 
 testCheckout :: Assertion
 testCheckout = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -749,11 +749,11 @@ testCheckout = do
             return ()
 
 quietCheckout :: String -> IO ()
-quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref quietPrinter)
 
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "a"
     D.createDirectory "a/b"
@@ -761,7 +761,7 @@ testStatusFromSubdir = do
     createFileWithContents "a/b/file" "x"
     D.setCurrentDirectory "a/b/c"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     assertBool "`status` command should not fail" (isRight eitherStatus)
     let status = fromRight undefined eitherStatus
     status @?= Status (StagingArea [] [] []) ["a/b/file"]
@@ -770,7 +770,7 @@ testStatusFromSubdir = do
 
 testStageFromSubdir :: Assertion
 testStageFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "a"
     createFileWithContents "a/x" "x"
@@ -788,7 +788,7 @@ testStageFromSubdir = do
 
 testCheckoutFromSubdir :: Assertion
 testCheckoutFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -871,7 +871,7 @@ testCheckoutFromSubdir = do
 
 testCommitFromSubdir :: Assertion
 testCommitFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -949,11 +949,11 @@ testCommitFromSubdir = do
             (not bExists) @? "`b` should not exist."
 
         quietCheckout :: String -> IO ()
-        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref (Just Quiet))
+        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref quietPrinter)
 
 testShowFromSubdir :: Assertion
 testShowFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -967,7 +967,7 @@ testShowFromSubdir = do
     assertBool "`commit` should not fail." $ isRight eitherCommit
     let commit = fromRight undefined eitherCommit
 
-    eitherShownCommit <- runEitherT $ H.show (Just $ H.hashToString $ hash commit) (Just Quiet)
+    eitherShownCommit <- runEitherT $ H.show (Just $ H.hashToString $ hash commit) quietPrinter
     assertBool "`commit` should not fail." $ isRight eitherShownCommit
     let shownCommit = fromRight undefined eitherShownCommit
 
@@ -977,18 +977,18 @@ testShowFromSubdir = do
 
 testShowNoArg :: Assertion
 testShowNoArg = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
     eitherCommit <- runEitherT noargCommit
 
-    eitherShownCommit <- runEitherT $ H.show Nothing (Just Quiet)
+    eitherShownCommit <- runEitherT $ H.show Nothing quietPrinter
     eitherShownCommit @?= eitherCommit
 
 testLogFromSubdir :: Assertion
 testLogFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
     eitherSuccess <- runEitherT $ do
         liftIO $ D.createDirectory "dir"
         liftIO $ D.setCurrentDirectory "dir"
@@ -1011,7 +1011,7 @@ testLogFromSubdir = do
 
         let commits = [commitA, commitB, commitC, commitD]
 
-        history <- reverse <$> H.log Nothing Nothing (Just Quiet)
+        history <- reverse <$> H.log Nothing Nothing quietPrinter
         liftIO $ commits @?= history
     D.setCurrentDirectory ".."
     when (isLeft eitherSuccess) $ do
@@ -1020,7 +1020,7 @@ testLogFromSubdir = do
 
 testCommitAmend :: Assertion
 testCommitAmend = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1038,11 +1038,11 @@ testCommitAmend = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    eitherCommit <- runEitherT $ H.commitAmend def Nothing (Just Quiet)
+    eitherCommit <- runEitherT $ H.commitAmend def Nothing quietPrinter
 
     ----------------
 
-    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    eitherLog <- runEitherT $ H.log Nothing Nothing quietPrinter
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
     let log = fromRight undefined eitherLog
 
@@ -1083,19 +1083,19 @@ testCommitAmend = do
 
 testCommitAmendNoPreviousCommits :: Assertion
 testCommitAmendNoPreviousCommits = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
-    eitherCommit <- runEitherT $ H.commitAmend def Nothing (Just Quiet)
+    eitherCommit <- runEitherT $ H.commitAmend def Nothing quietPrinter
 
     eitherCommit @?= Left "Fatal: cannot amend when no commits have been made."
 
 testCommitAmendFromSubdir :: Assertion
 testCommitAmendFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1115,11 +1115,11 @@ testCommitAmendFromSubdir = do
 
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commitAmend def Nothing (Just Quiet)
+    runEitherT $ H.commitAmend def Nothing quietPrinter
 
     ----------------
 
-    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    eitherLog <- runEitherT $ H.log Nothing Nothing quietPrinter
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
     let log = fromRight undefined eitherLog
 
@@ -1161,7 +1161,7 @@ testCommitAmendFromSubdir = do
 
 testSquash :: Assertion
 testSquash = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1193,7 +1193,7 @@ testSquash = do
 
     runEitherT $ H.squash def (H.hashToString . hash $ firstCommit)
 
-    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    eitherLog <- runEitherT $ H.log Nothing Nothing quietPrinter
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
     let log = fromRight undefined eitherLog
 
@@ -1241,7 +1241,7 @@ testSquash = do
 
 testSquashFromSubdir :: Assertion
 testSquashFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1276,7 +1276,7 @@ testSquashFromSubdir = do
 
     runEitherT $ H.squash def (H.hashToString . hash $ firstCommit)
 
-    eitherLog <- runEitherT $ H.log Nothing Nothing (Just Quiet)
+    eitherLog <- runEitherT $ H.log Nothing Nothing quietPrinter
     assertBool ("`log` should not fail: " ++ (fromLeft undefined eitherLog))  (isRight eitherLog)
     let log = fromRight undefined eitherLog
 
@@ -1326,7 +1326,7 @@ testSquashFromSubdir = do
 
 testStageSameFileTwiceNoChanges :: Assertion
 testStageSameFileTwiceNoChanges = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1338,7 +1338,7 @@ testStageSameFileTwiceNoChanges = do
 
 testStageSameFileTwiceWithChanges :: Assertion
 testStageSameFileTwiceWithChanges = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1355,7 +1355,7 @@ testStageSameFileTwiceWithChanges = do
 
 testUnstage :: Assertion
 testUnstage = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1372,7 +1372,7 @@ testUnstage = do
 
 testUnstageUnstagedFile :: Assertion
 testUnstageUnstagedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     runEitherT $ H.stage "a"
     runEitherT $ H.unstage "a"
@@ -1382,7 +1382,7 @@ testUnstageUnstagedFile = do
 
 testUnstageNonexistentPath :: Assertion
 testUnstageNonexistentPath = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     runEitherT $ H.stage "a"
     runEitherT $ H.unstage "a"
@@ -1392,7 +1392,7 @@ testUnstageNonexistentPath = do
 
 testUnstageFromSubdir :: Assertion
 testUnstageFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "d"
     D.setCurrentDirectory "d"
@@ -1409,7 +1409,7 @@ testUnstageFromSubdir = do
 
 testUnstageDirectory :: Assertion
 testUnstageDirectory = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "d"
 
@@ -1425,7 +1425,7 @@ testUnstageDirectory = do
 
 testCommitNoStagedFiles :: Assertion
 testCommitNoStagedFiles = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1433,29 +1433,29 @@ testCommitNoStagedFiles = do
 
     eitherCommit @?= Left "Fatal: can't commit with an empty staging area."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= (Right $ Status (StagingArea [] [] []) ["a"])
 
 testStageFileWithNoChanges :: Assertion
 testStageFileWithNoChanges = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
 
     eitherStagingArea <- runEitherT $ H.stage "a"
     eitherStagingArea @?= (Right $ StagingArea [] [] [])
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= (Right $ Status (StagingArea [] [] []) [])
 
 testCheckoutTruncatedHash :: Assertion
 testCheckoutTruncatedHash = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1533,7 +1533,7 @@ testCheckoutTruncatedHash = do
 
 testCheckoutBadTruncatedHash1 :: Assertion
 testCheckoutBadTruncatedHash1 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1541,13 +1541,13 @@ testCheckoutBadTruncatedHash1 = do
     eitherCommit1 <- runEitherT noargCommit
     let commitHash = ByteString.take 8 . hash $ fromRight undefined eitherCommit1
 
-    eitherCheckoutResult <- runEitherT $ H.checkout "" (Just Quiet)
+    eitherCheckoutResult <- runEitherT $ H.checkout "" quietPrinter
 
     eitherCheckoutResult @?= Left "Fatal: can't untruncate the empty hash."
 
 testCheckoutBadTruncatedHash2 :: Assertion
 testCheckoutBadTruncatedHash2 = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
 
@@ -1555,7 +1555,7 @@ testCheckoutBadTruncatedHash2 = do
     runEitherT noargCommit
 
     -- unlikely that this will be the actual hash
-    eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" (Just Quiet)
+    eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" quietPrinter
 
     eitherCheckoutResult @?= Left "Fatal: ref \"aaaaaaaa\" does not match any branch names or stored hashes"
 
@@ -1574,23 +1574,23 @@ mockHasher2 = CommitHasher
 
 testCheckoutCollidingTruncatedHashes :: Assertion
 testCheckoutCollidingTruncatedHashes = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
-    runEitherT $ H.commit mockHasher1 Nothing (Just Quiet)
+    runEitherT $ H.commit mockHasher1 Nothing quietPrinter
 
     createFileWithContents "b" "1"
     runEitherT $ H.stage "b"
-    runEitherT $ H.commit mockHasher2 Nothing (Just Quiet)
+    runEitherT $ H.commit mockHasher2 Nothing quietPrinter
 
-    eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') (Just Quiet)
+    eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') quietPrinter
 
     eitherCheckoutSuccess @?= Left "Fatal: multiple hashes or branch names match specified ref: [\"aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
 
 testCheckoutRelativeSyntaxCaret :: Assertion
 testCheckoutRelativeSyntaxCaret = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1669,7 +1669,7 @@ testCheckoutRelativeSyntaxCaret = do
 
 testCheckoutRelativeSyntaxTilde :: Assertion
 testCheckoutRelativeSyntaxTilde = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1748,7 +1748,7 @@ testCheckoutRelativeSyntaxTilde = do
 
 testCheckoutTruncatedRelativeSyntax :: Assertion
 testCheckoutTruncatedRelativeSyntax = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1828,7 +1828,7 @@ testCheckoutTruncatedRelativeSyntax = do
 
 testCheckoutRelativeSyntaxTildeZero :: Assertion
 testCheckoutRelativeSyntaxTildeZero = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -1904,19 +1904,19 @@ testCheckoutRelativeSyntaxTildeZero = do
 
 testUntrack :: Assertion
 testUntrack = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "a" (Just Quiet)
+    runEitherT $ H.untrack "a" quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
 testUntrackGivenDirectory :: Assertion
 testUntrackGivenDirectory = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -1924,14 +1924,14 @@ testUntrackGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x" (Just Quiet)
+    runEitherT $ H.untrack "x" quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
 testUntrackGivenDirectoryFromSubdir :: Assertion
 testUntrackGivenDirectoryFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -1940,28 +1940,28 @@ testUntrackGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.untrack "." (Just Quiet)
+    runEitherT $ H.untrack "." quietPrinter
     D.setCurrentDirectory ".."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
 testRetrack :: Assertion
 testRetrack = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "a" (Just Quiet)
+    runEitherT $ H.untrack "a" quietPrinter
     runEitherT $ H.retrack "a"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a", "b"])
 
 testRetrackGivenDirectory :: Assertion
 testRetrackGivenDirectory = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -1969,15 +1969,15 @@ testRetrackGivenDirectory = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x" (Just Quiet)
+    runEitherT $ H.untrack "x" quietPrinter
     runEitherT $ H.retrack "x"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
 
 testRetrackGivenDirectoryFromSubdir :: Assertion
 testRetrackGivenDirectoryFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -1986,29 +1986,29 @@ testRetrackGivenDirectoryFromSubdir = do
     createFileWithContents "b" "1"
 
     D.setCurrentDirectory "x"
-    runEitherT $ H.untrack "." (Just Quiet)
+    runEitherT $ H.untrack "." quietPrinter
     runEitherT $ H.retrack "."
     D.setCurrentDirectory ".."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b", "x/a", "x/y/a"])
 
 testStagingUntrackedFile :: Assertion
 testStagingUntrackedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "b" (Just Quiet)
+    runEitherT $ H.untrack "b" quietPrinter
     runEitherT $ H.stage "b"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
 
 testUntrackMultipleTimes :: Assertion
 testUntrackMultipleTimes = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2016,15 +2016,15 @@ testUntrackMultipleTimes = do
     createFileWithContents "x/y/a" "1"
     createFileWithContents "b" "1"
 
-    runEitherT $ H.untrack "x/a" (Just Quiet)
-    runEitherT $ H.untrack "x/y" (Just Quiet)
+    runEitherT $ H.untrack "x/a" quietPrinter
+    runEitherT $ H.untrack "x/y" quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["b"])
 
 testConfigFirstTime :: Assertion
 testConfigFirstTime = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2039,7 +2039,7 @@ testConfigFirstTime = do
 
 testConfigFirstTimeNoParams :: Assertion
 testConfigFirstTimeNoParams = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2054,7 +2054,7 @@ testConfigFirstTimeNoParams = do
 
 testConfigNotFirstTime :: Assertion
 testConfigNotFirstTime = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2088,15 +2088,15 @@ testNoRepoConfig = do
 
 testUntrackPathOutsideOfRepo :: Assertion
 testUntrackPathOutsideOfRepo = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
-    eitherUnit <- runEitherT $ H.untrack "../a" (Just Quiet)
+    eitherUnit <- runEitherT $ H.untrack "../a" quietPrinter
 
     eitherUnit @?= Left "Can't untrack file or directory outside of the repository: ../a"
 
 testUngnorePathOutsideOfRepo :: Assertion
 testUngnorePathOutsideOfRepo = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherUnit <- runEitherT $ H.retrack "../a"
 
@@ -2104,22 +2104,22 @@ testUngnorePathOutsideOfRepo = do
 
 testRemovingUntrackedFile :: Assertion
 testRemovingUntrackedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
     runEitherT noargCommit
 
-    runEitherT $ H.untrack "a" (Just Quiet)
+    runEitherT $ H.untrack "a" quietPrinter
 
     D.removeFile "a"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) [])
 
 testStageCurrentDirectoryRemovedFile :: Assertion
 testStageCurrentDirectoryRemovedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -2127,50 +2127,50 @@ testStageCurrentDirectoryRemovedFile = do
 
     D.removeFile "a"
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
 
     runEitherT $ H.stage "."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] ["a"]) [])
 
 testRetrackingNeverUntrackedFile :: Assertion
 testRetrackingNeverUntrackedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     result <- runEitherT $ H.retrack "a"
 
     result @?= Right ()
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) ["a"])
 
 testStagingHorseDir :: Assertion
 testStagingHorseDir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     eitherStagingArea <- runEitherT $ H.stage ".horse"
     eitherStagingArea @?= Left "Fatal: cannot stage .horse; it is a directory required by horse-control."
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea [] [] []) [])
 
 testUntrackingStagedFile :: Assertion
 testUntrackingStagedFile = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
-    runEitherT $ H.untrack "a" (Just Quiet)
+    runEitherT $ H.untrack "a" quietPrinter
 
-    eitherStatus <- runEitherT $ H.status (Just Quiet)
+    eitherStatus <- runEitherT $ H.status quietPrinter
     eitherStatus @?= Right (Status (StagingArea ["a"] [] []) [])
 
 testDiffFromSubdir :: Assertion
 testDiffFromSubdir = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2180,7 +2180,7 @@ testDiffFromSubdir = do
 
     D.createDirectory "x"
     D.setCurrentDirectory "x"
-    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+    eitherDiff <- runEitherT $ H.diff quietPrinter
     D.setCurrentDirectory ".."
 
     eitherDiff @?= (Right $
@@ -2199,7 +2199,7 @@ testDiffFromSubdir = do
 
 testDiff :: Assertion
 testDiff = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2207,7 +2207,7 @@ testDiff = do
 
     createFileWithContents "b" "b"
 
-    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+    eitherDiff <- runEitherT $ H.diff quietPrinter
 
     eitherDiff @?= (Right $
         FD.Diff
@@ -2225,25 +2225,25 @@ testDiff = do
 
 testDiffNoCommitsHaveBeenMade :: Assertion
 testDiffNoCommitsHaveBeenMade = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
 
-    eitherDiff <- runEitherT $ H.diff (Just Quiet)
+    eitherDiff <- runEitherT $ H.diff quietPrinter
 
     eitherDiff @?= Left "Fatal: can't diff with HEAD when no commits have been made."
 
 testBranchListNewRepo :: Assertion
 testBranchListNewRepo = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
 
     eitherBranches @?= Right []
 
 testInitialCommitCreatesNewBranch :: Assertion
 testInitialCommitCreatesNewBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2252,13 +2252,13 @@ testInitialCommitCreatesNewBranch = do
     assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
     let commitHash = hash $ fromRight undefined eitherCommit
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
 
     eitherBranches @?= Right [Branch "master" commitHash True]
 
 testCommitAdvancesCurrentBranch :: Assertion
 testCommitAdvancesCurrentBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2270,13 +2270,13 @@ testCommitAdvancesCurrentBranch = do
     assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
     let commitHash = hash $ fromRight undefined eitherCommit
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
 
     eitherBranches @?= Right [Branch "master" commitHash True]
 
 testBranchCreateCreatesNewBranch :: Assertion
 testBranchCreateCreatesNewBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2284,11 +2284,11 @@ testBranchCreateCreatesNewBranch = do
     assertBool (fromLeft undefined eitherCommit) (isRight eitherCommit)
     let commitHash = hash $ fromRight undefined eitherCommit
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "master" commitHash True]
 
-    runEitherT $ H.createBranch "newbranch" Nothing (Just Quiet)
-    eitherBranches2 <- runEitherT $ H.listBranches (Just Quiet)
+    runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    eitherBranches2 <- runEitherT $ H.listBranches quietPrinter
 
     eitherBranches2 @?= Right
         [ (Branch "newbranch" commitHash False)
@@ -2296,7 +2296,7 @@ testBranchCreateCreatesNewBranch = do
 
 testBranchCreateCreatesNewBranchFromRef :: Assertion
 testBranchCreateCreatesNewBranchFromRef = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2310,16 +2310,16 @@ testBranchCreateCreatesNewBranchFromRef = do
     assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
     let commitHash2 = hash $ fromRight undefined eitherCommit2
 
-    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") quietPrinter
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right
         [ (Branch "newbranch" commitHash1 False)
         , (Branch "master"    commitHash2 True) ]
 
 testCannotDeleteCurrentBranch :: Assertion
 testCannotDeleteCurrentBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2333,19 +2333,19 @@ testCannotDeleteCurrentBranch = do
     assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
     let commitHash2 = hash $ fromRight undefined eitherCommit2
 
-    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") quietPrinter
 
-    success <- runEitherT $ H.deleteBranch "master" (Just Quiet)
+    success <- runEitherT $ H.deleteBranch "master" quietPrinter
     success @?= Left "Fatal: cannot delete current branch (master)"
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right
         [ (Branch "newbranch" commitHash1 False)
         , (Branch "master"    commitHash2 True) ]
 
 testCanDeleteNoncurrentBranch :: Assertion
 testCanDeleteNoncurrentBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2359,17 +2359,17 @@ testCanDeleteNoncurrentBranch = do
     assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
     let commitHash2 = hash $ fromRight undefined eitherCommit2
 
-    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") (Just Quiet)
+    runEitherT $ H.createBranch "newbranch" (Just "HEAD^") quietPrinter
 
-    success <- runEitherT $ H.deleteBranch "newbranch" (Just Quiet)
+    success <- runEitherT $ H.deleteBranch "newbranch" quietPrinter
     success @?= Right ()
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "master" commitHash2 True]
 
 testDeleteNonexistentBranch :: Assertion
 testDeleteNonexistentBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2378,41 +2378,41 @@ testDeleteNonexistentBranch = do
     let commitHash = hash $ fromRight undefined eitherCommit
 
 
-    success <- runEitherT $ H.deleteBranch "nonexistent" (Just Quiet)
+    success <- runEitherT $ H.deleteBranch "nonexistent" quietPrinter
     success @?= Left "Error: can't delete nonexistent branch \"nonexistent\""
 
-    eitherBranches <- runEitherT $ H.listBranches (Just Quiet)
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "master" commitHash True]
 
 testLogGivenBranch :: Assertion
 testLogGivenBranch = do
     eitherSuccess <- runEitherT $ do
-        H.init (Just Quiet)
+        H.init quietPrinter
 
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
         commitA <- noargCommit
-        bA <- H.createBranch "branch-a" Nothing (Just Quiet)
+        bA <- H.createBranch "branch-a" Nothing quietPrinter
 
         liftIO $ createFileWithContents "b" "b"
         H.stage "b"
         commitB <- noargCommit
-        bB <- H.createBranch "branch-b" Nothing (Just Quiet)
+        bB <- H.createBranch "branch-b" Nothing quietPrinter
 
         liftIO $ createFileWithContents "c" "c"
         H.stage "c"
         commitC <- noargCommit
-        bC <- H.createBranch "branch-c" Nothing (Just Quiet)
+        bC <- H.createBranch "branch-c" Nothing quietPrinter
 
         liftIO $ createFileWithContents "d" "d"
         H.stage "d"
         commitD <- noargCommit
-        bD <- H.createBranch "branch-d" Nothing (Just Quiet)
+        bD <- H.createBranch "branch-d" Nothing quietPrinter
 
         let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ head commits
-        history <- reverse <$> H.log (Just "branch-c") Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just "branch-c") Nothing quietPrinter
         liftIO $ ([commitA, commitB, commitC]) @?= history
 
     when (isLeft eitherSuccess) $ do
@@ -2422,32 +2422,32 @@ testLogGivenBranch = do
 testLogGivenBranchWithRelativeSyntax :: Assertion
 testLogGivenBranchWithRelativeSyntax = do
     eitherSuccess <- runEitherT $ do
-        H.init (Just Quiet)
+        H.init quietPrinter
 
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
         commitA <- noargCommit
-        bA <- H.createBranch "branch-a" Nothing (Just Quiet)
+        bA <- H.createBranch "branch-a" Nothing quietPrinter
 
         liftIO $ createFileWithContents "b" "b"
         H.stage "b"
         commitB <- noargCommit
-        bB <- H.createBranch "branch-b" Nothing (Just Quiet)
+        bB <- H.createBranch "branch-b" Nothing quietPrinter
 
         liftIO $ createFileWithContents "c" "c"
         H.stage "c"
         commitC <- noargCommit
-        bC <- H.createBranch "branch-c" Nothing (Just Quiet)
+        bC <- H.createBranch "branch-c" Nothing quietPrinter
 
         liftIO $ createFileWithContents "d" "d"
         H.stage "d"
         commitD <- noargCommit
-        bD <- H.createBranch "branch-d" Nothing (Just Quiet)
+        bD <- H.createBranch "branch-d" Nothing quietPrinter
 
         let commits = [commitA, commitB, commitC, commitD]
 
         let ref = H.hashToString . hash $ head commits
-        history <- reverse <$> H.log (Just "branch-c^") Nothing (Just Quiet)
+        history <- reverse <$> H.log (Just "branch-c^") Nothing quietPrinter
         liftIO $ ([commitA, commitB]) @?= history
 
     when (isLeft eitherSuccess) $ do
@@ -2456,7 +2456,7 @@ testLogGivenBranchWithRelativeSyntax = do
 
 testCheckoutGivenBranch :: Assertion
 testCheckoutGivenBranch = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -2464,7 +2464,7 @@ testCheckoutGivenBranch = do
 
     runEitherT $ H.stage "a"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-1" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-1" Nothing quietPrinter
 
     ----------------
 
@@ -2474,7 +2474,7 @@ testCheckoutGivenBranch = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-2" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-2" Nothing quietPrinter
 
     ----------------
 
@@ -2484,7 +2484,7 @@ testCheckoutGivenBranch = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-3" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-3" Nothing quietPrinter
 
     ----------------
 
@@ -2534,7 +2534,7 @@ testCheckoutGivenBranch = do
 
 testCheckoutGivenBranchWithRelativeSyntax :: Assertion
 testCheckoutGivenBranchWithRelativeSyntax = do
-    runEitherT $ H.init (Just Quiet)
+    runEitherT $ H.init quietPrinter
 
     ----------------
 
@@ -2542,7 +2542,7 @@ testCheckoutGivenBranchWithRelativeSyntax = do
 
     runEitherT $ H.stage "a"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-1" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-1" Nothing quietPrinter
 
     ----------------
 
@@ -2552,7 +2552,7 @@ testCheckoutGivenBranchWithRelativeSyntax = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-2" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-2" Nothing quietPrinter
 
     ----------------
 
@@ -2562,7 +2562,7 @@ testCheckoutGivenBranchWithRelativeSyntax = do
     runEitherT $ H.stage "a"
     runEitherT $ H.stage "b"
     runEitherT noargCommit
-    runEitherT $ H.createBranch "branch-3" Nothing (Just Quiet)
+    runEitherT $ H.createBranch "branch-3" Nothing quietPrinter
 
     ----------------
 
@@ -2661,9 +2661,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `branch create` run without a repo"
         (runTest testNoRepoBranchCreate)
-    , testCase
-        "Testing command `branch set` run without a repo"
-        (runTest testNoRepoBranchSet)
+    --, testCase
+    --    "Testing command `branch set` run without a repo"
+    --    (runTest testNoRepoBranchSet)
     , testCase
         "Testing `horse init`"
         (runTest testInit)

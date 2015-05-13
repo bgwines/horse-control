@@ -19,9 +19,11 @@ module Horse.Types(
 
 , Status(..)
 
-, Verbosity(..)
-
 , CommitHasher(..)
+
+, Printer(..)
+, quietPrinter
+, normalPrinter
 
 , Branch(..)
 
@@ -34,6 +36,10 @@ module Horse.Types(
 
 -- imports
 
+import Prelude hiding (print, putStr, putStrLn)
+import qualified Prelude as P (print, putStr, putStrLn)
+import qualified Rainbow as R
+
 import Prelude hiding (init, log)
 
 import GHC.Generics
@@ -45,6 +51,7 @@ import qualified Data.Text.Encoding as TE
 
 import qualified Filediff as FD
 import qualified Filediff.Types as FD
+import qualified Filediff.Printing as FD
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BS (c2w, w2c)
@@ -161,9 +168,6 @@ instance Default Status where
     def :: Status
     def = Status def def
 
--- | Degree of printing / logging to be executed by exposed commands.
-data Verbosity = Quiet | Normal | Verbose deriving (Eq, Show, Read)
-
 -- | Encapsulation of hashing algorithm. Decomposed for mocking purposes
 --   for testing. Is an instance of 'Default'; use that unless testing.
 data CommitHasher = CommitHasher {
@@ -180,6 +184,36 @@ instance Default CommitHasher where
         . Hex.hex
         . SHA256.hash
         . Serialize.encode
+
+data Printer = Printer {
+    putStr :: String -> IO (),
+    putStrLn :: String -> IO (),
+    putChunk :: R.Chunk ByteString -> IO (),
+    putChunkLn :: R.Chunk ByteString -> IO (),
+    printDiff :: FD.Diff -> IO ()
+}
+
+instance Default Printer where
+    def :: Printer
+    def = Printer P.putStr P.putStrLn R.putChunk R.putChunkLn FD.printDiff
+
+quietPrinter :: Printer
+quietPrinter = Printer putStr' putStrLn' putChunk' putChunkLn' printDiff'
+    where
+        -- hack to get better code coverage but not actually print
+        -- anything during tests
+        putStr' str   = if str == "" then return () else return ()
+        putStrLn' str = if str == "" then return () else return ()
+        putChunk' ch = if ch == R.mempty
+            then return ()
+            else return ()
+        putChunkLn' ch = if ch == R.mempty
+            then return ()
+            else return ()
+        printDiff' _ = return ()
+
+normalPrinter :: Printer
+normalPrinter = def
 
 -- | A branch. Like Git branches, horse-control branches are pointers
 --   to commit hashes.

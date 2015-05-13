@@ -35,4 +35,4 @@ Test-Suite test-horse
     main-is:    Tests/test-horse.hs
     build-depends: base >=4.7 && <4.8, horse-control, tasty, tasty-hunit, Zora >= 1.1.23, shelly, punycode, text, system-filepath, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras, filediff >= 1.0.0.0
     default-language:    Haskell2010
-    GHC-Options:      -fhpc -hpcdir dist/hpc/horse-control-1.0
+    GHC-Options:      -fhpc -hpcdir dist/hpc/mix/test-horse

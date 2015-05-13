@@ -202,15 +202,17 @@ quietPrinter = Printer putStr' putStrLn' putChunk' putChunkLn' printDiff'
     where
         -- hack to get better code coverage but not actually print
         -- anything during tests
-        putStr' str   = if str == "" then return () else return ()
-        putStrLn' str = if str == "" then return () else return ()
-        putChunk' ch = if ch == R.mempty
+        putStr' str   = if length str > 0 then return () else return ()
+        putStrLn' str = if length str > 0 then return () else return ()
+        putChunk' ch = if (length . Prelude.show $ ch) > 0
             then return ()
             else return ()
-        putChunkLn' ch = if ch == R.mempty
+        putChunkLn' ch = if (length . Prelude.show $ ch) > 0
             then return ()
             else return ()
-        printDiff' _ = return ()
+        printDiff' diff = if (length . Prelude.show $ diff) > 0
+            then return ()
+            else return ()
 
 normalPrinter :: Printer
 normalPrinter = def

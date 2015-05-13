@@ -158,6 +158,25 @@ filesystemTests = testGroup "unit tests (Horse.Filesystem)"
         (runTest testDropPrefix)
     ]
 
+testFromEitherMaybeDefault :: Assertion
+testFromEitherMaybeDefault = do
+    let a :: [Int] = H.fromEitherMaybeDefault (Left  2) Nothing
+    let b :: Int   = H.fromEitherMaybeDefault (Right 3) Nothing
+    let c :: Int   = H.fromEitherMaybeDefault (Left  2) (Just 4)
+    let d :: Int   = H.fromEitherMaybeDefault (Right 2) (Just 4)
+
+    a @?= []
+    b @?= 3
+    c @?= 4
+    d @?= 4
+
+utilsTests :: TestTree
+utilsTests = testGroup "unit tests (Horse.Utils)"
+    [ testCase
+        "Testing `fromEitherMaybeDefault`"
+        (runTest testFromEitherMaybeDefault)
+    ]
+
 testLoadCommitErrorCase :: Assertion
 testLoadCommitErrorCase = do
     runEitherT $ H.init quietPrinter
@@ -2287,7 +2306,9 @@ testBranchCreateCreatesNewBranch = do
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "master" commitHash True]
 
-    runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    b @?= Right (Branch "newbranch" commitHash False)
+
     eitherBranches2 <- runEitherT $ H.listBranches quietPrinter
 
     eitherBranches2 @?= Right
@@ -2920,8 +2941,8 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing command `branch delete` when given a non-current branch"
         (runTest testCanDeleteNoncurrentBranch)
     , testCase
-        "Testing command `branch delete` when given a non-current branch"
-        (runTest testCanDeleteNoncurrentBranch)
+        "Testing command `branch delete` when given a nonexistent branch"
+        (runTest testDeleteNonexistentBranch)
     , testCase
         "Testing command `log` when given a branch"
         (runTest testLogGivenBranch)
@@ -2937,7 +2958,7 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     ]
 
 tests :: TestTree
-tests = testGroup "All tests" [commandTests, filesystemTests, ioTests]
+tests = testGroup "All tests" [commandTests, filesystemTests, ioTests, utilsTests]
 
 main :: IO ()
 main = defaultMain tests

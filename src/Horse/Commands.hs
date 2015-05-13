@@ -103,8 +103,7 @@ import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 
 import Horse.Types
 import Horse.Utils
-    ( stringToHash
-    , hashToString
+    ( hashToString
     , (|<$>|)
     , maybeToEither
     , fromEitherMaybeDefault
@@ -142,7 +141,6 @@ createBranch'
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-    --unless (verbosity == Quiet) $
     liftIO . putStrLn $ ("Created branch \"" ++ branchName ++ "\", pointing to commit " ++ (hashToString hash))
 
     right newBranch
@@ -164,13 +162,11 @@ deleteBranch
         left ("Error: can't delete nonexistent branch \"" ++ branchNameToDelete ++ "\"")
     let branchToDelete = fromJust maybeBranchToDelete
 
-    let isCurrent = maybe False isCurrentBranch maybeBranchToDelete
-    when isCurrent $
+    when (isCurrentBranch branchToDelete) $
         left ("Fatal: cannot delete current branch (" ++ branchNameToDelete ++ ")")
 
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
 
-    --unless (verbosity == Quiet) $
     liftIO . putStrLn $ ("Deleted branch \"" ++ branchNameToDelete ++ "\"" ++ " (was " ++ (take 7 . hashToString $ branchHash branchToDelete) ++ ")")
 
     liftIO $ D.setCurrentDirectory userDirectory
@@ -246,7 +242,6 @@ init (Printer putStr putStrLn putChunk putChunkLn _) = do
         mapM_ (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
         currDir <- D.getCurrentDirectory
-        --unless (verbosity == Quiet) $
         liftIO . putStrLn $ "Initialized existing horse-control repository in"
                 ++ currDir ++ "/" ++ HC.repositoryDataDir
 
@@ -297,7 +292,6 @@ untrack path (Printer putStr putStrLn putChunk putChunkLn _) = do
     HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . nub . (:) relativePath
 
     untrackingStagedFiles <- (any (flip isPrefixOf $ relativePath) . files) <$> HIO.loadStagingArea
-    --unless (verbosity == Quiet) $ do
     liftIO . putStrLn $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
 
     liftIO $ D.setCurrentDirectory userDirectory
@@ -329,7 +323,6 @@ listUntrackedPaths (Printer putStr putStrLn putChunk putChunkLn _) = do
 
     liftIO $ D.setCurrentDirectory userDirectory
 
-    --unless (verbosity == Quiet) $ do
     liftIO . putStrLn $ Prelude.show paths
 
     right paths

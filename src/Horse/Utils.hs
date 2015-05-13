@@ -3,7 +3,7 @@ module Horse.Utils
 ( -- * conversions
   maybeToEither
 , fromEitherMaybeDefault
-, stringToHash
+--, stringToHash
 , hashToString
 
 -- * general
@@ -51,8 +51,8 @@ fromEitherMaybeDefault (Left  _) (Just y) = y
 fromEitherMaybeDefault (Right _) (Just y) = y
 
 -- | Conversion function for hashes.
-stringToHash :: String -> Hash
-stringToHash = pack . map Convert.convert
+--stringToHash :: String -> Hash
+--stringToHash = pack . map Convert.convert
 
 -- | Conversion function for hashes (other direction).
 hashToString :: Hash -> String

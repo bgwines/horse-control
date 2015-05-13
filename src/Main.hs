@@ -19,35 +19,36 @@ import Data.Default (def)
 
 -- | Schema for arguments to exposed commands
 data Command
-    = Init (Maybe Types.Verbosity)
+    = Init                               Types.Printer
     | Version
     | Config (Maybe String) (Maybe Types.EmailAddress)
-    | Status (Maybe Types.Verbosity)
+    | Status                             Types.Printer
     | Stage String
     | Unstage String
-    | Commit (Maybe String) Bool (Maybe Types.Verbosity)
-    | Checkout String (Maybe Types.Verbosity)
-    | Show (Maybe String)
-    | Log (Maybe String) (Maybe Int) (Maybe Types.Verbosity)
+    | Commit (Maybe String) Bool         Types.Printer
+    | Checkout String                    Types.Printer
+    | Show (Maybe String)                Types.Printer
+    | Log (Maybe String) (Maybe Int)     Types.Printer
     | Squash String
-    | Untrack (Maybe String) Bool (Maybe Types.Verbosity)
+    | Untrack (Maybe String) Bool        Types.Printer
     | Retrack String
-    | Diff (Maybe Types.Verbosity)
-    | CreateBranch String (Maybe String) (Maybe Types.Verbosity)
-    | DeleteBranch String (Maybe Types.Verbosity)
-    | ListBranches (Maybe Types.Verbosity)
+    | Diff                               Types.Printer
+    | CreateBranch String (Maybe String) Types.Printer
+    | DeleteBranch String                Types.Printer
+    | ListBranches                       Types.Printer
     deriving (Show)
 
-verbosityOption :: Parser (Maybe Types.Verbosity)
-verbosityOption = (optional $ option auto
-        ( long "verbosity"
-        <> short 'v'
-        <> metavar "VERBOSITY"
-        <> help "How much logging to print during execution of the command" )
-    )
-
+quietOption :: Parser Types.Printer
+quietOption = toPrinter <$> (switch
+        ( long "quiet"
+        <> short 'q'
+        <> help "Whether to supress logging to the console during the execution of the command." ) )
+    where
+        toPrinter :: Bool -> Types.Printer
+        toPrinter False = Types.normalPrinter
+        toPrinter True = Types.quietPrinter
 parseInit :: Parser Command
-parseInit = Init <$> verbosityOption
+parseInit = Init <$> quietOption
 
 parseConfig :: Parser Command
 parseConfig = Config
@@ -63,7 +64,7 @@ parseConfig = Config
         )
 
 parseStatus :: Parser Command
-parseStatus = Status <$> verbosityOption
+parseStatus = Status <$> quietOption
 
 parseStage :: Parser Command
 parseStage = Stage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
@@ -78,18 +79,20 @@ parseCommit = Commit
             <> metavar "COMMIT-MESSAGE" )
         )
     <*> switch (long "amend" <> help "Whether to amend the latest commit (HEAD)" )
-    <*> verbosityOption
+    <*> quietOption
 
 parseCheckout :: Parser Command
 parseCheckout = Checkout
     <$> (argument str $ metavar "REF")
-    <*> verbosityOption
+    <*> quietOption
 
 parseShow :: Parser Command
-parseShow = Show <$> (optional $ argument str
-        ( metavar "REF"
-        <> help "Ref to show" )
-    )
+parseShow = Show
+    <$> (optional $ argument str
+            ( metavar "REF"
+            <> help "Ref to show" )
+        )
+    <*> quietOption
 
 parseLog :: Parser Command
 parseLog = Log
@@ -103,7 +106,7 @@ parseLog = Log
             <> metavar "HISTORY-LENGTH"
             <> help "Number of commits to display in history." )
         )
-    <*> verbosityOption
+    <*> quietOption
 
 parseVersion :: Parser Command
 parseVersion = pure Version
@@ -115,27 +118,27 @@ parseUntrack :: Parser Command
 parseUntrack = Untrack
     <$> (optional $ argument str $ metavar "PATH")
     <*> switch (long "list" <> help "List untracked paths" )
-    <*> verbosityOption
+    <*> quietOption
 
 parseCreateBranch :: Parser Command
 parseCreateBranch = CreateBranch
     <$> (argument str $ metavar "BRANCH-NAME")
     <*> (optional $ argument str $ metavar "REF")
-    <*> verbosityOption
+    <*> quietOption
 
 parseDeleteBranch :: Parser Command
 parseDeleteBranch = DeleteBranch
     <$> (argument str $ metavar "BRANCH-NAME")
-    <*> verbosityOption
+    <*> quietOption
 
 parseListBranches :: Parser Command
-parseListBranches = ListBranches <$> verbosityOption
+parseListBranches = ListBranches <$> quietOption
 
 parseRetrack :: Parser Command
 parseRetrack = Retrack <$> (argument str $ metavar "PATH")
 
 parseDiff :: Parser Command
-parseDiff = Diff <$> verbosityOption
+parseDiff = Diff <$> quietOption
 
 parseBranch :: Parser Command
 parseBranch = subparser
@@ -218,28 +221,35 @@ parseCommand = subparser
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
+-- abbreviations:
+--     m - message
+--     p - printer
+--     r - ref
+--dispatchCommand
+dispatchCommand cmd = runEitherT $ case cmd of
+    Version            -> liftIO . putStrLn $ "0.1.0.0"
+    Init p             -> Commands.init                      p
+    Checkout r p       -> Commands.checkout r                p
+    Config name email  -> void $ Commands.config name email
+    Show r p           -> void $ Commands.show r             p
+    Stage path         -> void $ Commands.stage path
+    Unstage path       -> void $ Commands.unstage path
+    Log r n p          -> void $ Commands.log r n            p
+    Status p           -> void $ Commands.status             p
+    Commit m False p   -> void $ Commands.commit def m       p
+    Commit m True p    -> void $ Commands.commitAmend def m  p
+    Squash r           -> void $ Commands.squash def r
+    Retrack path       -> void $ Commands.retrack path
+    Diff p             -> void $ Commands.diff               p
+    CreateBranch b r p -> void $ Commands.createBranch b r   p
+    DeleteBranch b p   -> void $ Commands.deleteBranch b     p
+    ListBranches p     -> void $ Commands.listBranches       p
+    Untrack _ True p   -> void $ Commands.listUntrackedPaths p
+    Untrack (Just path) False p -> void $ Commands.untrack path p
+
 run :: Command -> IO ()
 run cmd = do
-    eitherSuccess <- runEitherT $ case cmd of
-        Version                  -> liftIO . putStrLn $ "0.1.0.0"
-        Init v                   -> Commands.init v
-        Checkout ref v           -> Commands.checkout ref v
-        Config name email        -> void $ Commands.config name email
-        Show ref                 -> void $ Commands.show ref Nothing
-        Stage path               -> void $ Commands.stage path
-        Unstage path             -> void $ Commands.unstage path
-        Log ref n v              -> void $ Commands.log ref n v
-        Status v                 -> void $ Commands.status v
-        Commit msg False v       -> void $ Commands.commit def msg v
-        Commit msg True v        -> void $ Commands.commitAmend def msg v
-        Squash ref               -> void $ Commands.squash def ref
-        Untrack _ True v         -> void $ Commands.listUntrackedPaths v
-        Untrack (Just p) False v -> void $ Commands.untrack p v
-        Retrack p                -> void $ Commands.retrack p
-        Diff v                   -> void $ Commands.diff v
-        CreateBranch b ref v     -> void $ Commands.createBranch b ref v
-        DeleteBranch b v         -> void $ Commands.deleteBranch b v
-        ListBranches v           -> void $ Commands.listBranches v
+    eitherSuccess <- dispatchCommand cmd
     if isLeft eitherSuccess
         then putStrLn $ fromLeft def eitherSuccess
         else return ()

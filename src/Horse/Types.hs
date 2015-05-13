@@ -193,6 +193,10 @@ data Printer = Printer {
     printDiff :: FD.Diff -> IO ()
 }
 
+instance Show Printer where
+    show :: Printer -> String
+    show _ = "Printer: an ADT wrapper around a set of functions to print to the console."
+
 instance Default Printer where
     def :: Printer
     def = Printer P.putStr P.putStrLn R.putChunk R.putChunkLn FD.printDiff

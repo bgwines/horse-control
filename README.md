@@ -1,7 +1,7 @@
 # horse-control
 Version control, written in Haskell with all that monadic goodness! (Currently totally in progress and not finished in the least)
 
-[![Build Status](https://travis-ci.org/bgwines/horse-control.svg?branch=master)](https://travis-ci.org/bgwines/horse-control)
+[![Build Status](https://travis-ci.org/bgwines/horse-control.svg?branch=master)](https://travis-ci.org/bgwines/horse-control) [![Coverage Status](https://coveralls.io/repos/bgwines/horse-control/badge.svg?branch=master)](https://coveralls.io/r/bgwines/horse-control?branch=master)
 
 <img src="logo.png" alt="" width="100px"/>
 

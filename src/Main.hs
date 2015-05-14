@@ -1,5 +1,4 @@
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 import System.Environment
 import System.Exit
@@ -26,7 +25,7 @@ data Command
     | Stage String
     | Unstage String
     | Commit (Maybe String) Bool         Types.Printer
-    | Checkout String                    Types.Printer
+    | Checkout String
     | Show (Maybe String)                Types.Printer
     | Log (Maybe String) (Maybe Int)     Types.Printer
     | Squash String
@@ -39,103 +38,96 @@ data Command
     deriving (Show)
 
 quietOption :: Parser Types.Printer
-quietOption = toPrinter <$> (switch
+quietOption = toPrinter <$> switch
         ( long "quiet"
         <> short 'q'
-        <> help "Whether to supress logging to the console during the execution of the command." ) )
+        <> help "Whether to supress logging to the console during the execution of the command." )
     where
         toPrinter :: Bool -> Types.Printer
         toPrinter False = Types.normalPrinter
         toPrinter True = Types.quietPrinter
+
 parseInit :: Parser Command
 parseInit = Init <$> quietOption
 
 parseConfig :: Parser Command
 parseConfig = Config
-    <$> (optional $ strOption
+    <$> optional ( strOption
             ( long "name"
             <> metavar "NAME"
-            <> help "User's name, to be displayed in commit messages." )
-        )
-    <*> (optional $ strOption
+            <> help "User's name, to be displayed in commit messages." ) )
+    <*> optional ( strOption
             ( long "email"
             <> metavar "EMAIL"
-            <> help "User's e-mail, to be displayed in commit messages." )
-        )
+            <> help "User's e-mail, to be displayed in commit messages." ) )
 
 parseStatus :: Parser Command
 parseStatus = Status <$> quietOption
 
 parseStage :: Parser Command
-parseStage = Stage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
+parseStage = Stage <$> argument str (metavar "FILE-OR-DIRECTORY")
 
 parseUnstage :: Parser Command
-parseUnstage = Unstage <$> (argument str $ metavar "FILE-OR-DIRECTORY")
+parseUnstage = Unstage <$> argument str (metavar "FILE-OR-DIRECTORY")
 
 parseCommit :: Parser Command
 parseCommit = Commit
-    <$> (optional $ strOption
+    <$> optional ( strOption
             ( short 'm'
-            <> metavar "COMMIT-MESSAGE" )
-        )
-    <*> switch (long "amend" <> help "Whether to amend the latest commit (HEAD)" )
+            <> metavar "COMMIT-MESSAGE" ) )
+    <*> switch (long "amend" <> help "Whether to amend the latest commit (HEAD)")
     <*> quietOption
 
 parseCheckout :: Parser Command
-parseCheckout = Checkout
-    <$> (argument str $ metavar "REF")
-    <*> quietOption
+parseCheckout = Checkout <$> argument str (metavar "REF")
 
 parseShow :: Parser Command
 parseShow = Show
-    <$> (optional $ argument str
+    <$> optional (argument str
             ( metavar "REF"
-            <> help "Ref to show" )
-        )
+            <> help "Ref to show" ) )
     <*> quietOption
 
 parseLog :: Parser Command
 parseLog = Log
-    <$> (optional $ argument str
+    <$> optional ( argument str
             ( metavar "REF"
-            <> help "Ref from which to print log." )
-        )
-    <*> (optional $ option auto
+            <> help "Ref from which to print log." ) )
+    <*> optional ( option auto
             ( long "length"
             <> short 'n'
             <> metavar "HISTORY-LENGTH"
-            <> help "Number of commits to display in history." )
-        )
+            <> help "Number of commits to display in history." ) )
     <*> quietOption
 
 parseVersion :: Parser Command
 parseVersion = pure Version
 
 parseSquash :: Parser Command
-parseSquash = Squash <$> (argument str $ metavar "REF")
+parseSquash = Squash <$> argument str (metavar "REF")
 
 parseUntrack :: Parser Command
 parseUntrack = Untrack
-    <$> (optional $ argument str $ metavar "PATH")
-    <*> switch (long "list" <> help "List untracked paths" )
+    <$> optional (argument str (metavar "PATH"))
+    <*> switch (long "list" <> help "List untracked paths")
     <*> quietOption
 
 parseCreateBranch :: Parser Command
 parseCreateBranch = CreateBranch
-    <$> (argument str $ metavar "BRANCH-NAME")
-    <*> (optional $ argument str $ metavar "REF")
+    <$> argument str (metavar "BRANCH-NAME")
+    <*> optional (argument str (metavar "REF"))
     <*> quietOption
 
 parseDeleteBranch :: Parser Command
 parseDeleteBranch = DeleteBranch
-    <$> (argument str $ metavar "BRANCH-NAME")
+    <$> argument str (metavar "BRANCH-NAME")
     <*> quietOption
 
 parseListBranches :: Parser Command
 parseListBranches = ListBranches <$> quietOption
 
 parseRetrack :: Parser Command
-parseRetrack = Retrack <$> (argument str $ metavar "PATH")
+parseRetrack = Retrack <$> argument str (metavar "PATH")
 
 parseDiff :: Parser Command
 parseDiff = Diff <$> quietOption
@@ -229,7 +221,7 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 dispatchCommand cmd = runEitherT $ case cmd of
     Version            -> liftIO . putStrLn $ "0.1.0.0"
     Init p             -> Commands.init                      p
-    Checkout r p       -> Commands.checkout r                p
+    Checkout r         -> Commands.checkout r
     Config name email  -> void $ Commands.config name email
     Show r p           -> void $ Commands.show r             p
     Stage path         -> void $ Commands.stage path
@@ -250,9 +242,8 @@ dispatchCommand cmd = runEitherT $ case cmd of
 run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- dispatchCommand cmd
-    if isLeft eitherSuccess
-        then putStrLn $ fromLeft def eitherSuccess
-        else return ()
+    when (isLeft eitherSuccess) $
+        putStrLn $ fromLeft def eitherSuccess
 
 main :: IO ()
 main = run =<< execParser

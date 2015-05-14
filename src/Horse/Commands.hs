@@ -1,5 +1,4 @@
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE PackageImports #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -89,6 +88,8 @@ import Data.List
     , isPrefixOf
     , nub )
 
+import Data.Char (isDigit)
+
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -116,46 +117,45 @@ import qualified Horse.Printing as HP
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
 
---createBranchSetCurrent :: String -> Maybe String -> Printer -> EitherT Error IO Branch
---createBranchSetCurrent branchName maybeRef printer =
---    createBranch' branchName maybeRef True
+type EIO a = EitherT Error IO a
 
-createBranch :: String -> Maybe String -> Printer -> EitherT Error IO Branch
-createBranch branchName maybeRef printer =
-    createBranch' branchName maybeRef False printer
+executeCommand :: EIO a -> EIO a
+executeCommand cmd = executeCommandPassingUserDirectory (const cmd)
 
-createBranch' :: String -> Maybe String -> Bool -> Printer -> EitherT Error IO Branch
-createBranch'
-    branchName
-    maybeRef
-    setCurrent
-    (Printer putStr putStrLn putChunk putChunkLn _)
-    = do
+executeCommandPassingUserDirectory :: (FilePath -> EIO a) -> EIO a
+executeCommandPassingUserDirectory cmd = do
     userDirectory <- liftIO D.getCurrentDirectory
+
     HF.assertIsRepositoryAndCdToRoot
 
+    result <- cmd userDirectory
+
+    liftIO $ D.setCurrentDirectory userDirectory
+
+    right result
+
+createBranch :: String -> Maybe String -> Printer -> EIO Branch
+createBranch branchName maybeRef printer = executeCommand (createBranch' branchName maybeRef printer)
+
+createBranch' :: String -> Maybe String -> Printer -> EIO Branch
+createBranch' branchName maybeRef (Printer _ putStrLn _ _ _) = do
     hash <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
 
     let newBranch = Branch branchName hash False
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (:) newBranch
 
-    liftIO $ D.setCurrentDirectory userDirectory
-
-    liftIO . putStrLn $ ("Created branch \"" ++ branchName ++ "\", pointing to commit " ++ (hashToString hash))
+    liftIO . putStrLn $ "Created branch \"" ++ branchName ++ "\", pointing to commit " ++ hashToString hash
 
     right newBranch
     --where
     --    makeNotCurrent :: Branch -> Branch
     --    makeNotCurrent b@(Branch name hash _) = Branch name hash False
 
-deleteBranch :: String -> Printer -> EitherT Error IO ()
-deleteBranch
-    branchNameToDelete
-    (Printer putStr putStrLn putChunk putChunkLn _)
-    = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+deleteBranch :: String -> Printer -> EIO ()
+deleteBranch branchNameToDelete printer = executeCommand (deleteBranch' branchNameToDelete printer)
 
+deleteBranch' :: String -> Printer -> EIO ()
+deleteBranch' branchNameToDelete (Printer _ putStrLn _ _ _) = do
     branches <- HIO.loadAllBranches
     let maybeBranchToDelete = find ((==) branchNameToDelete . branchName) branches
     when (isNothing maybeBranchToDelete) $
@@ -165,35 +165,22 @@ deleteBranch
     when (isCurrentBranch branchToDelete) $
         left ("Fatal: cannot delete current branch (" ++ branchNameToDelete ++ ")")
 
-    HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (flip (\\) $ [branchToDelete])
+    HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . flip (\\) [branchToDelete]
 
     liftIO . putStrLn $ ("Deleted branch \"" ++ branchNameToDelete ++ "\"" ++ " (was " ++ (take 7 . hashToString $ branchHash branchToDelete) ++ ")")
 
-    liftIO $ D.setCurrentDirectory userDirectory
+listBranches :: Printer -> EIO [Branch]
+listBranches = executeCommand . listBranches'
 
-listBranches :: Printer -> EitherT Error IO [Branch]
-listBranches printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
-
+listBranches' :: Printer -> EIO [Branch]
+listBranches' printer = do
     branches <- HIO.loadAllBranches
-
     liftIO . HP.printBranches printer $ branches
-
-    liftIO $ D.setCurrentDirectory userDirectory
-
     right branches
-
---setBranch :: String -> String -> Printer -> EitherT Error IO ()
---setBranch branchName ref printer = do
---    userDirectory <- liftIO D.getCurrentDirectory
---    HF.assertIsRepositoryAndCdToRoot
-
---    liftIO $ D.setCurrentDirectory userDirectory
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
-config :: Maybe String -> Maybe EmailAddress -> EitherT Error IO Config
+config :: Maybe String -> Maybe EmailAddress -> EIO Config
 config maybeName maybeEmail = do
     liftIO $ do
         configPath <- HC.configPath
@@ -209,21 +196,21 @@ config maybeName maybeEmail = do
                     , email = fromEitherMaybeDefault
                         (email <$> eitherUserInfo)
                         maybeEmail }
-                HIO.writeConfig $ Config { userInfo = updatedUserInfo }
+                HIO.writeConfig Config { userInfo = updatedUserInfo }
             else do
                 HF.createFileWithContents configPath BS.empty
 
                 let userInfo = UserInfo {
                       name = fromMaybe Default.def maybeName
                     , email = fromMaybe Default.def maybeEmail }
-                HIO.writeConfig $ Config { userInfo = userInfo }
+                HIO.writeConfig Config { userInfo = userInfo }
 
     HIO.loadConfig
 
 -- | Initializes an empty repository in the current directory. If
 --   one currently exists, it aborts.
-init :: Printer -> EitherT Error IO ()
-init (Printer putStr putStrLn putChunk putChunkLn _) = do
+init :: Printer -> EIO ()
+init (Printer _ putStrLn _ _ _) = do
     whenM (liftIO $ HF.isInRepository ".") $
         left "Fatal: directory is or is subdirectory of another horse-control repo"
 
@@ -236,193 +223,188 @@ init (Printer putStr putStrLn putChunk putChunkLn _) = do
         mapM_ HF.destructivelyCreateDirectory HC.directories
 
         let createOptions = DB.defaultOptions{ DB.createIfMissing = True }
-        mapM_ ((=<<) DBI.unsafeClose . (flip DB.open) createOptions)
+        mapM_ ((=<<) DBI.unsafeClose . flip DB.open createOptions)
             HC.databasePaths
 
         mapM_ (uncurry HF.createFileWithContents) HC.serializationPathsAndInitialContents
 
         currDir <- D.getCurrentDirectory
-        liftIO . putStrLn $ "Initialized existing horse-control repository in"
-                ++ currDir ++ "/" ++ HC.repositoryDataDir
+        liftIO . putStrLn $ "Initialized existing horse-control repository in" ++ currDir </> HC.repositoryDataDir
 
 -- | Gets and prints the difference between the current state of the
 -- filesystem and the state of the filesystem at HEAD.
-status :: Printer -> EitherT Error IO Status
-status printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+status :: Printer -> EIO Status
+status = executeCommand . status'
 
+-- | Gets and prints the difference between the current state of the
+-- filesystem and the state of the filesystem at HEAD.
+status' :: Printer -> EIO Status
+status' printer = do
     stagingArea <- HIO.loadStagingArea
     unstagedFiles <- loadUnstagedFiles
     let currentStatus = Status stagingArea unstagedFiles
-
     liftIO $ HP.printStatus printer currentStatus
-
-    liftIO $ D.setCurrentDirectory userDirectory
     right currentStatus
     where
         -- | Gets all files that have modifications that are not staged.
-        loadUnstagedFiles :: EitherT Error IO [FilePath]
+        loadUnstagedFiles :: EIO [FilePath]
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
             untrackedPaths <- HIO.loadUntrackedPaths
-            diffWithHEAD Nothing
-                >>= right . sort . getUnstagedFilesFromDiff (stagedFiles ++ untrackedPaths)
+            diffWithHEADAllFiles
+                >>= right
+                . sort
+                . getUnstagedFilesFromDiff (stagedFiles ++ untrackedPaths)
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
         getUnstagedFilesFromDiff stagedOrUntrackedFiles
-            = filter (\x -> none (isPrefixOf x) $ stagedOrUntrackedFiles)
+            = filter (\x -> none (isPrefixOf x) stagedOrUntrackedFiles)
             . map FD.comp
             . FD.filediffs
 
         none :: (a -> Bool) -> [a] -> Bool
         none f = not . any f
 
-untrack :: String -> Printer -> EitherT Error IO ()
-untrack path (Printer putStr putStrLn putChunk putChunkLn _) = do
-    -- TODO: figure out how to share this
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+untrack :: String -> Printer -> EIO ()
+untrack path printer =
+    executeCommandPassingUserDirectory (untrack' path printer)
 
+untrack' :: String -> Printer -> FilePath -> EIO ()
+untrack' path (Printer _ putStrLn _ _ _) userDirectory = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
-    when (isPrefixOf ".." relativePath) $ do
+    when (".." `isPrefixOf` relativePath) $
         left $ "Can't untrack file or directory outside of the repository: " ++ path
 
     HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . nub . (:) relativePath
 
-    untrackingStagedFiles <- (any (flip isPrefixOf $ relativePath) . files) <$> HIO.loadStagingArea
-    liftIO . putStrLn $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
+    untrackingStagedFiles <- (any (`isPrefixOf` relativePath) . files) <$> HIO.loadStagingArea
+    when untrackingStagedFiles $
+        liftIO . putStrLn $ "Warning: some staged file(s) are subdirectories of or reside at the path you are trying to untrack. These files will not be removed from the staging area, but will be untracked for the future."
 
-    liftIO $ D.setCurrentDirectory userDirectory
+retrack :: String -> EIO ()
+retrack = executeCommandPassingUserDirectory . retrack'
 
-retrack :: String -> EitherT Error IO ()
-retrack path = do
-    -- TODO: figure out how to share this
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
-
+retrack' :: String -> FilePath -> EIO ()
+retrack' path userDirectory = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
-    when (isPrefixOf ".." relativePath) $ do
+    when (".." `isPrefixOf` relativePath) $
         left $ "Can't retrack file or directory outside of the repository: " ++ path
 
     HIO.loadUntrackedPaths >>= liftIO . HIO.writeUntrackedPaths . removeSubdirsOf relativePath
-
-    liftIO $ D.setCurrentDirectory userDirectory
     where
         removeSubdirsOf :: FilePath -> [FilePath] -> [FilePath]
         removeSubdirsOf path = filter (not . isPrefixOf path)
 
-listUntrackedPaths :: Printer -> EitherT Error IO [FilePath]
-listUntrackedPaths (Printer putStr putStrLn putChunk putChunkLn _) = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+listUntrackedPaths :: Printer -> EIO [FilePath]
+listUntrackedPaths = executeCommand . listUntrackedPaths'
 
+listUntrackedPaths' :: Printer -> EIO [FilePath]
+listUntrackedPaths' (Printer _ putStrLn _ _ _) = do
     paths <- HIO.loadUntrackedPaths
-
-    liftIO $ D.setCurrentDirectory userDirectory
-
     liftIO . putStrLn $ Prelude.show paths
-
     right paths
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
-unstage :: String -> EitherT Error IO StagingArea
-unstage path = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+unstage :: String -> EIO StagingArea
+unstage = executeCommandPassingUserDirectory . unstage'
 
+-- | Adds the whatever change was made (modification or addition or
+--   deletion) to the specified file or directory to the staging area.
+unstage' :: String -> FilePath -> EIO StagingArea
+unstage' path userDirectory = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
-    when (isPrefixOf ".." relativePath) $ do
+    when (".." `isPrefixOf` relativePath) $
         left $ "Can't unstage file or directory outside of the repository: " ++ path
     relativePaths <- getRelativePaths relativePath
-    -- TODO: share the above code
 
-    let unstageFiles = mapStagingArea (flip (\\) $ relativePaths)
+    let unstageFiles = mapStagingArea (\\ relativePaths)
     stagingArea <- unstageFiles <$> HIO.loadStagingArea
     liftIO $ HIO.writeStagingArea stagingArea
-
-    liftIO $ D.setCurrentDirectory userDirectory
 
     right stagingArea
 
 -- | Adds the whatever change was made (modification or addition or
 --   deletion) to the specified file or directory to the staging area.
-stage :: String -> EitherT Error IO StagingArea
-stage path = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+stage :: String -> EIO StagingArea
+stage = executeCommandPassingUserDirectory . stage'
 
+-- | Adds the whatever change was made (modification or addition or
+--   deletion) to the specified file or directory to the staging area.
+stage' :: String -> FilePath -> EIO StagingArea
+stage' path userDirectory = do
     -- relative to root of repo
     relativePath <- HF.relativizePath path userDirectory
-    when (isPrefixOf ".." relativePath) $ do
+    when (".." `isPrefixOf` relativePath) $
         left $ "Can't stage file or directory outside of the repository: " ++ path
-    when (relativePath == ".horse") $ do
-        left $ "Fatal: cannot stage .horse; it is a directory required by horse-control."
+    when (relativePath == ".horse") $
+        left "Fatal: cannot stage .horse; it is a directory required by horse-control."
     relativePaths <- getRelativePaths relativePath
 
-    diffs <- FD.filediffs <$> (diffWithHEAD $ Just (relativePaths, True))
+    diffs <- FD.filediffs <$> diffWithHEADIncludeDeletions relativePaths
 
     pathExistsIsFile <- liftIO $ D.doesFileExist path
     pathExistsIsDir <- liftIO $ D.doesDirectoryExist path
-    when (diffs == mempty && (not pathExistsIsFile) && not (pathExistsIsDir)) $
+    when (diffs == mempty && not pathExistsIsFile && not pathExistsIsDir) $
         -- if no file or directory exists at that path, but the diff
         -- is empty, then it wasn't deleted, and, hence, must be an
         -- invalid path.
         left $ "Can't stage file or directory at path \"" ++ path ++ "\"; no file or directory exists at that path, and no file was deleted at that path."
 
-    let updateFunctions = zipWith ($) (repeat updateStagingArea) diffs
+    let updateFunctions = map updateStagingArea diffs
 
     stagingArea <- HIO.loadStagingArea
     let updatedStagingArea = foldl (flip ($)) stagingArea updateFunctions
 
-    liftIO $ do
-        HIO.writeStagingArea (mapStagingArea nub updatedStagingArea)
-        D.setCurrentDirectory userDirectory
+    liftIO $ HIO.writeStagingArea (mapStagingArea nub updatedStagingArea)
 
     right updatedStagingArea
     where
         updateStagingArea :: FD.Filediff -> StagingArea -> StagingArea
         updateStagingArea (FD.Filediff base _ change) stagingArea =
             case change of {
-            FD.Add _ -> stagingArea { adds = base : (adds stagingArea) };
-            FD.Mod _ -> stagingArea { mods = base : (mods stagingArea) };
-            FD.Del _ -> stagingArea { dels = base : (dels stagingArea) };
+            FD.Add _ -> stagingArea { adds = base : adds stagingArea };
+            FD.Mod _ -> stagingArea { mods = base : mods stagingArea };
+            FD.Del _ -> stagingArea { dels = base : dels stagingArea };
             }
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area.
-commitAmend :: CommitHasher -> Maybe String -> Printer -> EitherT Error IO Commit
-commitAmend hasher maybeMessage printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+commitAmend :: CommitHasher -> Maybe String -> Printer -> EIO Commit
+commitAmend hasher maybeMessage printer =
+    executeCommand (commitAmend' hasher maybeMessage printer)
 
+-- | Writes the changes housed in the staging area as a commit to disk,
+--   then clears the staging area.
+commitAmend' :: CommitHasher -> Maybe String -> Printer -> EIO Commit
+commitAmend' hasher maybeMessage printer = do
     unlessM commitsHaveBeenMade $
         left "Fatal: cannot amend when no commits have been made."
 
     latestCommit <- commit hasher maybeMessage printer
-    squashedCommit <- squash hasher (hashToString . fromJust . parentHash $ latestCommit)
-
-    liftIO $ D.setCurrentDirectory userDirectory
-    right squashedCommit
+    squash hasher (hashToString . fromJust . parentHash $ latestCommit)
 
 -- | Writes the changes housed in the staging area as a commit to disk,
 --   then clears the staging area. 'CommitHasher' is taken in for mocking
 --   for testing purposes.
-commit :: CommitHasher -> Maybe String -> Printer -> EitherT Error IO Commit
-commit hasher maybeMessage printer = do
-    let message = fromMaybe "default message" maybeMessage
+commit :: CommitHasher -> Maybe String -> Printer -> EIO Commit
+commit hasher maybeMessage printer =
+    executeCommand (commit' hasher maybeMessage printer)
 
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+-- | Writes the changes housed in the staging area as a commit to disk,
+--   then clears the staging area. 'CommitHasher' is taken in for mocking
+--   for testing purposes.
+commit' :: CommitHasher -> Maybe String -> Printer -> EIO Commit
+commit' hasher maybeMessage printer = do
+    let message = fromMaybe "default message" maybeMessage
 
     -- commit params
     now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
 
-    isFirstCommit <- ((==) Default.def) <$> HIO.loadHeadHash
+    isFirstCommit <- (==) Default.def <$> HIO.loadHeadHash
     parent <- if isFirstCommit
         then right Nothing
         else HIO.loadHeadHash >>= (fmap Just . HIO.loadCommit)
@@ -431,8 +413,7 @@ commit hasher maybeMessage printer = do
     when (isEmpty stagingArea) $
         left "Fatal: can't commit with an empty staging area."
 
-    -- behavior of `stage` ensures that this will never be `mempty`
-    stagedDiff <- HIO.loadStagingArea >>= diffWithHEAD . Just . (\fs -> (fs, False)) . files
+    stagedDiff <- diffWithHEADDoNotIncludeDeletions (files stagingArea)
 
     config <- HIO.loadConfig
 
@@ -445,48 +426,44 @@ commit hasher maybeMessage printer = do
         , diffWithPrimaryParent = stagedDiff
         , message               = message }
 
-    let commitHash = hashingAlg hasher $ hashlessCommit
+    let commitHash = hashingAlg hasher hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
     branches <- HIO.loadAllBranches
     let maybeCurrentBranch = find isCurrentBranch branches
     let currentBranch = maybe (Branch HC.defaultBranchName commitHash True) (\b -> b  { branchHash = commitHash }) maybeCurrentBranch
-    let updatedBranches = currentBranch : (filter (not . isCurrentBranch) branches)
+    let updatedBranches = currentBranch : filter (not . isCurrentBranch) branches
     liftIO $ HIO.writeAllBranches updatedBranches
 
     HIO.writeCommit completeCommit
     liftIO $ do
         HIO.writeHeadHash commitHash
         HIO.writeStagingArea (Default.def :: StagingArea)
-        D.setCurrentDirectory userDirectory
-
-    liftIO $ HP.printCommit printer completeCommit
-
-    liftIO $ HP.printCommitStats printer completeCommit
+        HP.printCommit printer completeCommit
+        HP.printCommitStats printer completeCommit
 
     right completeCommit
 
 -- | Inclusive in param
-squash :: CommitHasher -> String -> EitherT Error IO Commit
-squash hasher ref = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+squash :: CommitHasher -> String -> EIO Commit
+squash hasher ref = executeCommand (squash' hasher ref)
 
+-- | Inclusive in param
+squash' :: CommitHasher -> String -> EIO Commit
+squash' hasher ref = do
     historyToRoot <- log Nothing Nothing quietPrinter
 
     endHash <- refToHash ref
     let squashedCommit = getSquashedCommit historyToRoot endHash
 
     HIO.writeCommit squashedCommit
-    liftIO $ do
-        HIO.writeHeadHash (hash squashedCommit)
-        D.setCurrentDirectory userDirectory
+    liftIO $ HIO.writeHeadHash (hash squashedCommit)
 
     right squashedCommit
     where
         getSquashedCommit :: [Commit] -> Hash -> Commit
         getSquashedCommit historyToRoot endHash =
-            unhashedCommit { hash = hashingAlg hasher $ unhashedCommit }
+            unhashedCommit { hash = hashingAlg hasher unhashedCommit }
             where
                 history :: [Commit]
                 history = ZL.take_while_keep_last ((/=) endHash . hash) historyToRoot
@@ -508,43 +485,45 @@ squash hasher ref = do
 
 -- | Sets the contents of the filesystem to the state it had in the
 --   specified commit.
-checkout :: String -> Printer -> EitherT Error IO ()
-checkout ref _ = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+checkout :: String -> EIO ()
+checkout = executeCommand . checkout'
 
+-- | Sets the contents of the filesystem to the state it had in the
+--   specified commit.
+checkout' :: String -> EIO ()
+checkout' ref = do
     hash <- refToHash ref
     checkoutToDirectory "." hash
-
     liftIO $ HIO.writeHeadHash hash
-
-    liftIO $ D.setCurrentDirectory userDirectory
 
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
-show :: Maybe String -> Printer -> EitherT Error IO Commit
-show maybeRef printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+show :: Maybe String -> Printer -> EIO Commit
+show maybeRef printer = executeCommand (show' maybeRef printer)
 
+-- | Prints information about the specified commit to the console. With
+--   a `Nothing` for its parameter, it assumes a single argument of HEAD.
+show' :: Maybe String -> Printer -> EIO Commit
+show' maybeRef printer = do
     ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
-
     liftIO (HP.printCommit printer commit)
-
-    liftIO $ D.setCurrentDirectory userDirectory
-
     right commit
 
 -- | Prints the history from the current commit backwards. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
 --   Pass in a `Just` `Int` to specify the number of commits back to go
 --   in the history.
-log :: Maybe String -> Maybe Int -> Printer -> EitherT Error IO [Commit]
-log maybeRef maybeNumCommits printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+log :: Maybe String -> Maybe Int -> Printer -> EIO [Commit]
+log maybeRef maybeNumCommits printer =
+    executeCommand (log' maybeRef maybeNumCommits printer)
 
+-- | Prints the history from the current commit backwards. With
+--   a `Nothing` for its parameter, it assumes a single argument of HEAD.
+--   Pass in a `Just` `Int` to specify the number of commits back to go
+--   in the history.
+log' :: Maybe String -> Maybe Int -> Printer -> EIO [Commit]
+log' maybeRef maybeNumCommits printer = do
     haveCommitsBeenMade <- commitsHaveBeenMade
     history <- if haveCommitsBeenMade
         then do
@@ -557,36 +536,32 @@ log maybeRef maybeNumCommits printer = do
             right history
         else right []
 
-    liftIO $ D.setCurrentDirectory userDirectory
-
     right history
 
 -- | Prints out the difference between the working directory and HEAD
-diff :: Printer -> EitherT Error IO FD.Diff
-diff printer = do
-    userDirectory <- liftIO D.getCurrentDirectory
-    HF.assertIsRepositoryAndCdToRoot
+diff :: Printer -> EIO FD.Diff
+diff = executeCommand . diff'
 
-    unlessM commitsHaveBeenMade $ do
+-- | Prints out the difference between the working directory and HEAD
+diff' :: Printer -> EIO FD.Diff
+diff' printer = do
+    unlessM commitsHaveBeenMade $
         left "Fatal: can't diff with HEAD when no commits have been made."
 
-    theDiff <- diffWithHEAD Nothing
+    theDiff <- diffWithHEADAllFiles
     liftIO $ HP.printDiff printer theDiff
-
-    liftIO $ D.setCurrentDirectory userDirectory
-
     right theDiff
 
 -- * helper functions (not exposed)
 
 -- * assorted
 
-getRelativePaths :: FilePath -> EitherT Error IO [FilePath]
+getRelativePaths :: FilePath -> EIO [FilePath]
 getRelativePaths relativePath = do
     isDir <- liftIO $ D.doesDirectoryExist relativePath
 
     unfiltered <- if isDir
-        then liftIO $ (map (HF.collapse . (</>) relativePath)) <$> HF.getDirectoryContentsRecursiveSafe relativePath
+        then liftIO $ map (HF.collapse . (</>) relativePath) <$> HF.getDirectoryContentsRecursiveSafe relativePath
         else right [relativePath]
 
     let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
@@ -595,13 +570,13 @@ getRelativePaths relativePath = do
 
 -- | Identifies whether any commits have been made in the current
 --   repository.
-commitsHaveBeenMade :: EitherT Error IO Bool
-commitsHaveBeenMade = ((/=) Default.def) <$> HIO.loadHeadHash
+commitsHaveBeenMade :: EIO Bool
+commitsHaveBeenMade = (/=) Default.def <$> HIO.loadHeadHash
 
 -- | Checks out the specified hash to the specified directory. *NOTE*:
 --   will entirely overwrite the contents of the specified directory;
 --   be careful.
-checkoutToDirectory :: FilePath -> Hash -> EitherT Error IO ()
+checkoutToDirectory :: FilePath -> Hash -> EIO ()
 checkoutToDirectory dir hash = do
     liftIO HF.assertCurrDirIsRepo
 
@@ -627,7 +602,7 @@ checkoutToDirectory dir hash = do
 
 -- | Loads the history from a given commit, all the way back
 --   to the start. Returns in reverse order (latest commit at front).
-loadHistory :: Commit -> EitherT Error IO [Commit]
+loadHistory :: Commit -> EIO [Commit]
 loadHistory commit = do
     liftIO HF.assertCurrDirIsRepo
     liftIO
@@ -652,14 +627,14 @@ loadHistory commit = do
 --   have been hashed with that key yet). Fails if the format
 --   is unexpected. Acceptable formats are listed in user-facing
 --   documentation.
-refToHash :: String -> EitherT Error IO Hash
+refToHash :: String -> EIO Hash
 refToHash unparsedRef = do
     liftIO HF.assertCurrDirIsRepo
 
     base <- case baseRef of
         "HEAD" -> HIO.loadHeadHash
         someHash -> untruncateBaseRef someHash
-    (hoistEither $ toAncestorDistance relatives) >>= applyRelatives base
+    hoistEither (toAncestorDistance relatives) >>= applyRelatives base
     where
         parentSyntax :: Char
         parentSyntax = '^'
@@ -669,15 +644,15 @@ refToHash unparsedRef = do
 
         -- throws exception if `read` fails
         toAncestorDistance :: String -> Either Error Int
-        toAncestorDistance [] = Right 0
-        toAncestorDistance r =
-            if all ((==) parentSyntax) r
-                then Right $ length r
-                else if any ((==) parentSyntax) r
-                    then Left $ "Fatal: cannot combine '" ++ [parentSyntax] ++ "' and '" ++ [ancestorSyntax] ++ "' syntax."
-                    else Right $ read $ tail r
+        toAncestorDistance r
+            | Prelude.null r = Right 0
+            | all (parentSyntax ==) r = Right $ length r
+            | parentSyntax `elem` r =
+                Left $ "Fatal: cannot combine '" ++ [parentSyntax] ++ "' and '" ++ [ancestorSyntax] ++ "' syntax."
+            | all isDigit (tail r) = Right (read (tail r))
+            | otherwise = Left ("Fatal: unrecognized syntax: " ++ r)
 
-        applyRelatives :: Hash -> Int -> EitherT Error IO Hash
+        applyRelatives :: Hash -> Int -> EIO Hash
         applyRelatives h ancestorDistance = do
                 history <- HIO.loadCommit h >>= loadHistory
                 when (ancestorDistance >= length history) $
@@ -694,7 +669,7 @@ refToHash unparsedRef = do
         isRelativeSyntax ch
             = (ch == parentSyntax) || (ch == ancestorSyntax)
 
-        untruncateBaseRef :: String -> EitherT Error IO Hash
+        untruncateBaseRef :: String -> EIO Hash
         untruncateBaseRef baseRef = do
             when (Prelude.null baseRef) $
                 left "Fatal: can't untruncate the empty hash."
@@ -705,48 +680,56 @@ refToHash unparsedRef = do
             allBranches <- HIO.loadAllBranches
             let matchingBranches = filter ((==) baseRef . branchName) allBranches
 
-            let matching = matchingHashes ++ (map branchHash matchingBranches)
+            let matching = matchingHashes ++ map branchHash matchingBranches
 
             case length matching of
-                0 -> left $ "Fatal: ref " ++ (Prelude.show baseRef) ++ " does not match any branch names or stored hashes"
+                0 -> left $ "Fatal: ref " ++ Prelude.show baseRef ++ " does not match any branch names or stored hashes"
                 1 -> right $ head matching
-                _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ (Prelude.show matching)
+                _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ Prelude.show matching
 
 -- * diffing
 
+diffWithHEADIncludeDeletions :: [FilePath] -> EIO FD.Diff
+diffWithHEADIncludeDeletions filesToDiff = diffWithHEAD' (Just (filesToDiff, True))
+
+diffWithHEADDoNotIncludeDeletions :: [FilePath] -> EIO FD.Diff
+diffWithHEADDoNotIncludeDeletions filesToDiff = diffWithHEAD' (Just (filesToDiff, False))
+
+diffWithHEADAllFiles :: EIO FD.Diff
+diffWithHEADAllFiles = diffWithHEAD' Nothing
+
 -- | Pass in `Nothing` to diff all files; otherwise, pass in
 --   the files to diff.
-diffWithHEAD :: Maybe ([FilePath], Bool) -> EitherT Error IO FD.Diff
-diffWithHEAD maybeFilesToDiff = do
+diffWithHEAD' :: Maybe ([FilePath], Bool) -> EIO FD.Diff
+diffWithHEAD' maybeFilesToDiff = do
     liftIO HF.assertCurrDirIsRepo
 
-    headDir <- liftIO $ ((</>) HC.repositoryDataDir) <$> getTempDirectory
+    headDir <- liftIO $ (HC.repositoryDataDir </>) <$> getTempDirectory
     liftIO $ D.createDirectory headDir
 
     -- if no commits have been made; no point in filling the directory
     -- since HEAD doesn't exist so it would result in an empty diff
     -- anyway.
-    whenM commitsHaveBeenMade $ do
+    whenM commitsHaveBeenMade $
         HIO.loadHeadHash >>= checkoutToDirectory headDir
 
     untrackedPaths <- listUntrackedPaths quietPrinter
-    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] ([HC.repositoryDataDir] ++ untrackedPaths)
+    allFilesDiff <- liftIO $ FD.diffDirectoriesWithIgnoredSubdirs headDir "." [] (HC.repositoryDataDir : untrackedPaths)
 
     liftIO $ D.removeDirectoryRecursive headDir
 
-    if isNothing maybeFilesToDiff
-        then right allFilesDiff
-        else do
-            right
-                $ FD.Diff
-                . filter (shouldInclude (fromJust maybeFilesToDiff))
-                . FD.filediffs
-                $ allFilesDiff
+    case maybeFilesToDiff of
+        Nothing -> right allFilesDiff
+        (Just filesToDiff) -> right
+            . FD.Diff
+            . filter (shouldInclude filesToDiff)
+            . FD.filediffs
+            $ allFilesDiff
     where
         shouldInclude :: ([FilePath], Bool) -> FD.Filediff -> Bool
         shouldInclude (filesToDiff, includeDeletions) filediff
-            = ((flip elem $ filesToDiff) . FD.comp $ filediff)
-            || (includeDeletions && (FD.isDel . FD.change $ filediff))
+            = (includeDeletions && (FD.isDel . FD.change $ filediff))
+            || ((`elem` filesToDiff) . FD.comp $ filediff)
             -- `comp` instead of `base` because `comp` is ".", whereas
             -- `base` is ".horse/<temp directory>"
 

@@ -75,13 +75,6 @@ Installation
 
     > brew install leveldb
 
-Testing
--------
-
-Number of unit tests: 112 (and rising!)
-
-Code coverage: ![](coverage.png)
-
 Thanksto
 --------
 

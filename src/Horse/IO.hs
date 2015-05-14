@@ -34,11 +34,11 @@ module Horse.IO
 
 import Prelude hiding (init, log, null)
 
-import Data.Maybe
-
 import Data.Monoid
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Either
+import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
 -- qualified imports
 
@@ -68,10 +68,6 @@ import Data.List (nub, (\\))
 import Data.Maybe (isJust, fromJust)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
-
-import Control.Applicative
-import Control.Monad
-import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
 -- horse-control imports
 
@@ -127,7 +123,7 @@ loadCommit key = do
     hoistEither $ Serialize.decode commit
     where
         loadErrorMessage :: String
-        loadErrorMessage = "Could not fetch commit for key " ++ (show key) ++ "."
+        loadErrorMessage = "Could not fetch commit for key " ++ show key ++ "."
 
 -- | Writes the commit to the database, under the key of its hash.
 writeCommit :: Commit -> EitherT Error IO ()
@@ -161,7 +157,7 @@ writeHash hash
 loadConfig :: EitherT Error IO Config
 loadConfig
     = liftIO HF.assertCurrDirIsRepo
-    >> (liftIO HC.configPath)
+    >> liftIO HC.configPath
     >>= loadFromFile
 
 -- | Writes the object representing user-specified configuration to disk.
@@ -177,7 +173,7 @@ writeConfig config = do
 loadUntrackedPaths :: EitherT Error IO [FilePath]
 loadUntrackedPaths = do
     liftIO HF.assertCurrDirIsRepo
-    map (ByteString8.unpack) <$> loadFromFile HC.untrackedPathsPath
+    map ByteString8.unpack <$> loadFromFile HC.untrackedPathsPath
 
 -- | Loads the hashes of all commits ever made in the repo.
 writeUntrackedPaths :: [FilePath] -> IO ()

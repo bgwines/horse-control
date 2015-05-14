@@ -139,6 +139,44 @@ testDropPrefix = do
     H.dropPrefix ("abc" :: String) ("abc" :: String) @?= Just []
     H.dropPrefix ("abc" :: String) ("axc" :: String) @?= Nothing
 
+testDropUntil :: Assertion
+testDropUntil = do
+    H.dropUntil ((==) 'b') (""    :: String) @?= ""
+    H.dropUntil ((==) 'b') ("abc" :: String) @?= "c"
+
+testTakeWhileM :: Assertion
+testTakeWhileM = do
+    actual      <- H.takeWhileM (return . id) [True, True, False]
+    let expected = takeWhile    (         id) [True, True, False]
+    actual @?= expected
+
+testTakeWhileMEdgeCase1 :: Assertion
+testTakeWhileMEdgeCase1 = do
+    actual      <- H.takeWhileM (return . id) []
+    let expected = takeWhile    (         id) []
+    actual @?= expected
+
+testTakeWhileMEdgeCase2 :: Assertion
+testTakeWhileMEdgeCase2 = do
+    actual      <- H.takeWhileM (return . id) [False, False, False]
+    let expected = takeWhile    (         id) [False, False, False]
+    actual @?= expected
+
+testTakeWhileMEdgeCase3 :: Assertion
+testTakeWhileMEdgeCase3 = do
+    let emptyList :: [Int] = []
+    actual      <- H.takeWhileM (const undefined) emptyList
+    let expected = takeWhile    (const undefined) emptyList
+    actual @?= expected
+
+testAssertCurrDirIsRepo :: Assertion
+testAssertCurrDirIsRepo = do
+    runEitherT $ H.init quietPrinter
+
+    -- throws exception if fails
+    result <- H.assertCurrDirIsRepo
+    result @?= ()
+
 filesystemTests :: TestTree
 filesystemTests = testGroup "unit tests (Horse.Filesystem)"
     [ testCase
@@ -155,7 +193,25 @@ filesystemTests = testGroup "unit tests (Horse.Filesystem)"
         (runTest testGetDirectoryContentsRecursiveSafe)
     , testCase
         "Testing `dropPrefix`"
-        (runTest testDropPrefix)
+        testDropPrefix
+    , testCase
+        "Testing `dropUntil`"
+        testDropUntil
+    , testCase
+        "Testing `takeWhileM`"
+        testTakeWhileM
+    , testCase
+        "Testing `takeWhileM (edge case 1)`"
+        testTakeWhileMEdgeCase1
+    , testCase
+        "Testing `takeWhileM (edge case 2)`"
+        testTakeWhileMEdgeCase2
+    , testCase
+        "Testing `takeWhileM (edge case 3)`"
+        testTakeWhileMEdgeCase3
+    , testCase
+        "Testing `assertCurrDirIsRepo`"
+        (runTest testAssertCurrDirIsRepo)
     ]
 
 testFromEitherMaybeDefault :: Assertion
@@ -216,6 +272,16 @@ testLogTooFarBackSyntax = do
     eitherLogResult2 <- runEitherT $ H.log (Just "HEAD^^") Nothing quietPrinter
     eitherLogResult2 @?= Left "Fatal: specified relative commit is too far back in history; no commits exist there."
 
+testUndefinedAncestorSyntax :: Assertion
+testUndefinedAncestorSyntax = do
+    runEitherT $ H.init quietPrinter
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "a"
+    runEitherT noargCommit
+
+    eitherLogResult <- runEitherT $ H.log (Just "HEAD~x") Nothing quietPrinter
+    eitherLogResult @?= Left "Fatal: unrecognized syntax: ~x"
 
 testLog :: Assertion
 testLog = do
@@ -628,7 +694,7 @@ testNoRepoStage :: Assertion
 testNoRepoStage = testNoRepo $ H.stage def
 
 testNoRepoCheckout :: Assertion
-testNoRepoCheckout = testNoRepo $ H.checkout def quietPrinter
+testNoRepoCheckout = testNoRepo $ H.checkout def
 
 testNoRepoCommit :: Assertion
 testNoRepoCommit = testNoRepo $ noargCommit
@@ -637,7 +703,7 @@ testNoRepoShow :: Assertion
 testNoRepoShow = testNoRepo $ H.show def quietPrinter
 
 testNoRepoLog :: Assertion
-testNoRepoLog = testNoRepo $ H.log def def def
+testNoRepoLog = testNoRepo $ H.log def def quietPrinter
 
 testNoRepoSquash :: Assertion
 testNoRepoSquash = testNoRepo $ H.squash def def
@@ -685,7 +751,7 @@ testCheckoutChangesHEAD = do
     length <$> history1 @?= Right 2
 
     let firstHash = hash $ fromRight undefined eitherFirstCommit
-    runEitherT $ H.checkout (H.hashToString firstHash) quietPrinter
+    runEitherT $ H.checkout (H.hashToString firstHash)
     history2 <- runEitherT $ H.log Nothing Nothing quietPrinter
     length <$> history2 @?= Right 1
 
@@ -768,7 +834,7 @@ testCheckout = do
             return ()
 
 quietCheckout :: String -> IO ()
-quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref quietPrinter)
+quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref)
 
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
@@ -968,7 +1034,7 @@ testCommitFromSubdir = do
             (not bExists) @? "`b` should not exist."
 
         quietCheckout :: String -> IO ()
-        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref quietPrinter)
+        quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref)
 
 testShowFromSubdir :: Assertion
 testShowFromSubdir = do
@@ -1560,7 +1626,7 @@ testCheckoutBadTruncatedHash1 = do
     eitherCommit1 <- runEitherT noargCommit
     let commitHash = ByteString.take 8 . hash $ fromRight undefined eitherCommit1
 
-    eitherCheckoutResult <- runEitherT $ H.checkout "" quietPrinter
+    eitherCheckoutResult <- runEitherT $ H.checkout ""
 
     eitherCheckoutResult @?= Left "Fatal: can't untruncate the empty hash."
 
@@ -1574,7 +1640,7 @@ testCheckoutBadTruncatedHash2 = do
     runEitherT noargCommit
 
     -- unlikely that this will be the actual hash
-    eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa" quietPrinter
+    eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa"
 
     eitherCheckoutResult @?= Left "Fatal: ref \"aaaaaaaa\" does not match any branch names or stored hashes"
 
@@ -1603,7 +1669,7 @@ testCheckoutCollidingTruncatedHashes = do
     runEitherT $ H.stage "b"
     runEitherT $ H.commit mockHasher2 Nothing quietPrinter
 
-    eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a') quietPrinter
+    eitherCheckoutSuccess <- runEitherT $ H.checkout (replicate 9 'a')
 
     eitherCheckoutSuccess @?= Left "Fatal: multiple hashes or branch names match specified ref: [\"aaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]"
 
@@ -2955,6 +3021,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing command `checkout` when given a branch with relative syntax"
         (runTest testCheckoutGivenBranchWithRelativeSyntax)
+    , testCase
+        "Testing undefined ancestor syntax"
+        (runTest testUndefinedAncestorSyntax)
     ]
 
 tests :: TestTree

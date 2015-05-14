@@ -36,11 +36,11 @@ module Horse.Types(
 
 -- imports
 
-import Prelude hiding (print, putStr, putStrLn)
+import Prelude hiding (print, putStr, putStrLn, init, log)
 import qualified Prelude as P (print, putStr, putStrLn)
 import qualified Rainbow as R
 
-import Prelude hiding (init, log)
+import Control.Monad
 
 import GHC.Generics
 
@@ -76,6 +76,9 @@ instance Serialize (FD.ListDiff T.Text)
 instance Serialize FD.FileChange
 instance Serialize FD.Filediff
 instance Serialize FD.Diff
+
+-- Not using `null` is the hack described below to increase code coverage.
+{-# ANN module "HLint: ignore Use null" #-}
 
 -- | Data type for any kind of error.
 type Error = String
@@ -171,7 +174,7 @@ instance Default Status where
 -- | Encapsulation of hashing algorithm. Decomposed for mocking purposes
 --   for testing. Is an instance of 'Default'; use that unless testing.
 data CommitHasher = CommitHasher {
-    hashingAlg :: (Commit -> Hash)
+    hashingAlg :: Commit -> Hash
 }
 
 instance Default CommitHasher where
@@ -195,31 +198,21 @@ data Printer = Printer {
 
 instance Show Printer where
     show :: Printer -> String
-    show _ = "Printer: an ADT wrapper around a set of functions to print to the console."
-
-instance Default Printer where
-    def :: Printer
-    def = Printer P.putStr P.putStrLn R.putChunk R.putChunkLn FD.printDiff
+    show = const "Printer: an ADT wrapper around a set of functions to print to the console."
 
 quietPrinter :: Printer
 quietPrinter = Printer putStr' putStrLn' putChunk' putChunkLn' printDiff'
     where
         -- hack to get better code coverage but not actually print
         -- anything during tests
-        putStr' str   = if length str > 0 then return () else return ()
-        putStrLn' str = if length str > 0 then return () else return ()
-        putChunk' ch = if (length . Prelude.show $ ch) > 0
-            then return ()
-            else return ()
-        putChunkLn' ch = if (length . Prelude.show $ ch) > 0
-            then return ()
-            else return ()
-        printDiff' diff = if (length . Prelude.show $ diff) > 0
-            then return ()
-            else return ()
+        putStr' str   = when (length str > 0) $ return ()
+        putStrLn' str = when (length str > 0) $ return ()
+        putChunk' ch    = when ((length . Prelude.show $ ch) > 0) $ return ()
+        putChunkLn' ch  = when ((length . Prelude.show $ ch) > 0) $ return ()
+        printDiff' diff = when ((length . Prelude.show $ diff) > 0) $ return ()
 
 normalPrinter :: Printer
-normalPrinter = def
+normalPrinter = Printer P.putStr P.putStrLn R.putChunk R.putChunkLn FD.printDiff
 
 -- | A branch. Like Git branches, horse-control branches are pointers
 --   to commit hashes.
@@ -230,7 +223,3 @@ data Branch = Branch {
 } deriving (Eq, Show, Generic)
 
 instance Serialize Branch
-
-instance Default Branch where
-    def :: Branch
-    def = Branch def def False

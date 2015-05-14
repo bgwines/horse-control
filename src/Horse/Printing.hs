@@ -79,7 +79,7 @@ printCommitInLog
 --   specified commit is `HEAD` or not.
 printCommit :: Printer -> Commit -> IO ()
 printCommit
-    (Printer putStr putStrLn putChunk putChunkLn printDiff)
+    (Printer _ _ putChunk putChunkLn printDiff)
     (Commit author date hash _ diff message)
     = do
     let hashLine :: ByteString = "commit " <> hash
@@ -100,10 +100,10 @@ printCommit
     printDiff diff
 
 printCommitStats :: Printer -> Commit -> IO ()
-printCommitStats (Printer putStr putStrLn putChunk putChunkLn _) commit = do
-    putStrLn $ "[<branch> "
+printCommitStats (Printer _ putStrLn' _ _ _) commit = do
+    putStrLn' $ "[<branch> "
         ++ (Prelude.show . ByteString.take 7 $ hash commit)
-        ++  "] " ++ (message commit)
+        ++  "] " ++ message commit
 
     let numFiles = FD.numFilesAffected $ diffWithPrimaryParent commit
     let numAdds  = FD.numAddedLines    $ diffWithPrimaryParent commit
@@ -111,22 +111,22 @@ printCommitStats (Printer putStr putStrLn putChunk putChunkLn _) commit = do
     let filesString = if numFiles == 1
         then " file"
         else " files"
-    putStrLn $ ""
+    putStrLn' $ ""
         ++ Prelude.show numFiles ++ filesString ++ " changed, "
         ++ Prelude.show numAdds ++ " insertions(+), "
         ++ Prelude.show numDels ++ " deletions(-)"
 
 printStatus :: Printer -> Status -> IO ()
 printStatus
-    (Printer putStr putStrLn putChunk putChunkLn _)
+    (Printer _ putStrLn' _ _ _)
     (Status stagingArea unstagedFiles)
     = do
-    putStrLn "Staged changes:"
-    putStrLn . Prelude.show $ stagingArea
-    putStrLn ""
+    putStrLn' "Staged changes:"
+    putStrLn' . Prelude.show $ stagingArea
+    putStrLn' ""
 
-    putStrLn "Unstaged changes:"
-    putStrLn . Prelude.show $ unstagedFiles
+    putStrLn' "Unstaged changes:"
+    putStrLn' . Prelude.show $ unstagedFiles
 
 printDiff :: Printer -> FD.Diff -> IO ()
 printDiff (Printer _ _ _ _ printDiff) = printDiff
@@ -146,8 +146,8 @@ printBranch
     let prefix :: ByteString = if isCurrentBranch
         then "* "
         else "  "
-    let padding :: ByteString = ByteString.pack $ replicate (maxNameLength - (length branchName)) ' '
-    let name :: ByteString = (ByteString.pack branchName) <> padding
+    let padding :: ByteString = ByteString.pack $ replicate (maxNameLength - length branchName) ' '
+    let name :: ByteString = ByteString.pack branchName <> padding
     let hash :: ByteString = " (" <> ByteString.take 7 branchHash <> ")"
     putChunk $ chunk prefix
     putChunk $ chunk name & fore green

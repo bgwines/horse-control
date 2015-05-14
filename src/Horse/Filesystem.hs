@@ -4,6 +4,8 @@ module Horse.Filesystem
 , destructivelyCreateDirectory
 , getDirectoryContentsRecursiveSafe
 , dropPrefix
+, dropUntil
+, takeWhileM
 , relativizePath
 , collapse
 , repoRoot
@@ -18,7 +20,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 
-import Control.Exception.Base
+import Control.Exception.Base (assert)
 
 import Data.Maybe
 import Data.List ((\\))
@@ -35,6 +37,7 @@ import qualified Data.ByteString as ByteString
 import Horse.Types
 import Horse.Utils
     ( (</>)
+    , whenM
     , iterateMaybe
     , toMaybe )
 import qualified Horse.Constants as HC
@@ -50,10 +53,8 @@ createFileWithContents path contents = do
 --   destroying one if it was already there.
 destructivelyCreateDirectory :: FilePath -> IO ()
 destructivelyCreateDirectory dir = do
-    dirAlreadyExists <- D.doesDirectoryExist dir
-    if dirAlreadyExists
-        then D.removeDirectoryRecursive dir
-        else return ()
+    whenM (D.doesDirectoryExist dir) $
+        D.removeDirectoryRecursive dir
     D.createDirectory dir
 
 -- | Gets paths to all files in or in subdirectories of the
@@ -66,7 +67,7 @@ getDirectoryContentsRecursiveSafe directory = do
     let directoryWithTrailingSlash = if last directory == '/'
         then directory
         else directory </> ""
-    let numPathComponents = length . filter ((==) '/') $ directoryWithTrailingSlash
+    let numPathComponents = length . filter ('/' ==) $ directoryWithTrailingSlash
     let removePathComponents = last . take (numPathComponents + 1) . iterate removeFirstPathComponent
 
     return . map removePathComponents $ contents
@@ -78,7 +79,7 @@ getDirectoryContentsRecursiveSafe' directory = do
         then return []
         else do
             relativeContents <- removeDotDirs <$> D.getDirectoryContents directory
-            let contents = map ((</>) directory) relativeContents
+            let contents = map (directory </>) relativeContents
 
             files <- filterM D.doesFileExist contents
             directories <- filterM D.doesDirectoryExist contents
@@ -94,11 +95,11 @@ getDirectoryContentsRecursiveSafe' directory = do
 --
 -- Errors if given 'FilePath' doesn't have any \'/\' in it.
 removeFirstPathComponent :: FilePath -> FilePath
-removeFirstPathComponent = dropUntil ((==) '/')
+removeFirstPathComponent = dropUntil ('/' ==)
 
 -- | Takes a list of filepaths, and removes "." and ".." from it.
 removeDotDirs :: [FilePath] -> [FilePath]
-removeDotDirs = flip (\\) $ [".", ".."]
+removeDotDirs = flip (\\) [".", ".."]
 
 -- | Drops elements from the given list until the predicate function
 --   returns `True`. Note: API is such that the returned list does NOT
@@ -127,7 +128,7 @@ relativizePath :: FilePath -> FilePath -> EitherT Error IO FilePath
 relativizePath path userDirectory = do
     root <- repoRoot
     let userDirectoryRelativeToRoot = dropPrefix root userDirectory
-    right . collapse . tail $ (fromJust userDirectoryRelativeToRoot) </> path
+    right . collapse . tail $ fromJust userDirectoryRelativeToRoot </> path
 
 -- | If the current directory is a repo or a subdirectory of one,
 --   gets the ancestor that is a repo. If none are, returns an error
@@ -139,15 +140,15 @@ repoRoot = do
     if null repoAncestors
         then left "Fatal: current directory is not a repo or a decendant of one."
         else right . last $ repoAncestors
-    where
-        -- | Monadic 'takeWhile'.
-        takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]
-        takeWhileM _ []     = return []
-        takeWhileM p (x:xs) = do
-            q <- p x
-            if q
-                then (takeWhileM p xs) >>= (return . (:) x)
-                else return []
+
+-- | Monadic 'takeWhile'.
+takeWhileM :: (Monad m) => (a -> m Bool) -> [a] -> m [a]
+takeWhileM _ []     = return []
+takeWhileM p (x:xs) = do
+    q <- p x
+    if q
+        then liftM ((:) x) (takeWhileM p xs)
+        else return []
 
 -- | Gets the ancestors of the current directory.
 filesystemAncestors :: FilePath -> IO [FilePath]
@@ -156,7 +157,7 @@ filesystemAncestors directory = do
     return . (:) directory . map encodeString $ ancestors
     where
         getParent :: Filesystem.Path.FilePath -> Maybe Filesystem.Path.FilePath
-        getParent curr = toMaybe (parent curr) ((/=) curr)
+        getParent curr = toMaybe (parent curr) (curr /=)
 
 -- | Returns whether the current directory is part of a repository.
 isInRepository :: FilePath -> IO Bool
@@ -167,7 +168,7 @@ isInRepository filepath
 
 -- | Returns whether the specified directory is part of a repository.
 isRepo :: FilePath -> IO Bool
-isRepo = D.doesDirectoryExist . (flip (</>) $ HC.repositoryDataDir)
+isRepo = D.doesDirectoryExist . (</> HC.repositoryDataDir)
 
 -- | (wrapper around 'Filesystem.Path.collapse')
 collapse :: FilePath -> FilePath
@@ -181,12 +182,13 @@ assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
 assertIsRepositoryAndCdToRoot = do
     userDirectory <- liftIO D.getCurrentDirectory
     isRepository <- liftIO $ isInRepository userDirectory
-    unless isRepository $ do
-        left $ "Fatal: Not a horse repository (or any of the ancestor directories)."
+    unless isRepository $
+        left "Fatal: Not a horse repository (or any of the ancestor directories)."
     repoRoot >>= liftIO . D.setCurrentDirectory
 
+-- | Used to assert implementation invariants
 assertCurrDirIsRepo :: IO ()
 assertCurrDirIsRepo = assertM (isRepo ".") ()
     where
         assertM :: IO Bool -> a -> IO a
-        assertM bool x = bool >>= return . (flip assert $ x)
+        assertM bool x = liftM (`assert` x) bool

@@ -26,11 +26,12 @@ module Horse.Constants
 
 -- imports
 
-import Data.Maybe
-
 import Data.Monoid
+import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.Either
+import "monad-extras" Control.Monad.Extra (iterateMaybeM)
+import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
 -- qualified imports
 
@@ -65,11 +66,6 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 
 import Filesystem.Path (parent, null)
 import Filesystem.Path.CurrentOS (decodeString, encodeString)
-
-import Control.Applicative
-import Control.Monad
-import "monad-extras" Control.Monad.Extra (iterateMaybeM)
-import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
 -- horse-control imports
 
@@ -127,7 +123,7 @@ untrackedPathsPath = repositoryDataDir </> "untracked-paths"
 --   the `IO` monad because getting the user's home directory is
 --   a monadic operation.
 configPath :: IO FilePath
-configPath = (++) <$> D.getHomeDirectory <*> (return "/.horseconfig")
+configPath = (++) <$> D.getHomeDirectory <*> return "/.horseconfig"
 
 -- * lists
 
@@ -143,11 +139,11 @@ databasePaths = [diffsPath, commitsPath]
 --   those files upon initialization of an empty repository.
 serializationPathsAndInitialContents :: [(FilePath, ByteString.ByteString)]
 serializationPathsAndInitialContents =
-    [ (headHashPath       , Serialize.encode $ (Def.def :: Hash))
-    , (stagingAreaPath    , Serialize.encode $ (Def.def :: StagingArea)) 
-    , (hashesPath         , Serialize.encode $ (Def.def :: [Hash]))
-    , (branchesPath       , Serialize.encode $ (Def.def :: [Branch]))
-    , (untrackedPathsPath , Serialize.encode $ (Def.def :: [FilePath])) ]
+    [ (headHashPath       , Serialize.encode (Def.def :: Hash))
+    , (stagingAreaPath    , Serialize.encode (Def.def :: StagingArea)) 
+    , (hashesPath         , Serialize.encode (Def.def :: [Hash]))
+    , (branchesPath       , Serialize.encode (Def.def :: [Branch]))
+    , (untrackedPathsPath , Serialize.encode (Def.def :: [FilePath])) ]
 
 -- | The default branch. For now, "master"
 defaultBranchName :: String

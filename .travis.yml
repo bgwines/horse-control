@@ -1,4 +1,5 @@
 language: haskell
+
 ghc: 7.8
 
 before_install:
@@ -13,7 +14,6 @@ before_install:
   - sudo cp -R leveldb /usr/local/include
   - sudo ldconfig
   - cd ../..
-  - cabal install hpc-coveralls
 
 script:
   - cabal configure --enable-tests --enable-library-coverage && cabal build && cabal test

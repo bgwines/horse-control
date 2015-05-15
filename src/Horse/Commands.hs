@@ -496,6 +496,22 @@ checkout' ref = do
     checkoutToDirectory "." hash
     liftIO $ HIO.writeHeadHash hash
 
+    -- if checking out a branch, make it current.
+    allBranches <- HIO.loadAllBranches
+    let maybeBranch = find ((==) ref . branchName) allBranches
+    when (isJust maybeBranch) $ do
+        let branch = fromJust maybeBranch
+        let otherBranches = filter ((/=) ref . branchName) allBranches
+        let updatedOtherBranches = map makeNotCurrent otherBranches
+        let updatedBranches = makeCurrent branch : updatedOtherBranches
+        liftIO $ HIO.writeAllBranches updatedBranches
+    where
+        makeNotCurrent :: Branch -> Branch
+        makeNotCurrent b@(Branch name hash _) = Branch name hash False
+
+        makeCurrent :: Branch -> Branch
+        makeCurrent b@(Branch name hash _) = Branch name hash True
+
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
 show :: Maybe String -> Printer -> EIO Commit

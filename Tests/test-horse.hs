@@ -29,8 +29,9 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 -- imported functions
 
+import Data.Maybe
 
-import Data.List (sort)
+import Data.List (sort, find)
 
 import Data.Default (def)
 
@@ -2658,7 +2659,7 @@ testCheckoutGivenBranchWithRelativeSyntax = do
     test2 "branch-3~1"
     test3 "branch-3~0"
     test2 "branch-2"
-    test1 "branch-3~2"
+    test1 "branch-3^^"
     test3 "branch-3"
     test1 "branch-1"
 
@@ -2697,6 +2698,104 @@ testCheckoutGivenBranchWithRelativeSyntax = do
             (not bExists) @? "`b` should not exist."
             return ()
 
+testCheckoutChangesCurrentBranch :: Assertion
+testCheckoutChangesCurrentBranch = do
+    runEitherT $ H.init quietPrinter
+
+    ----------------
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight undefined eitherCommit1
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    ----------------
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    D.removeFile "b"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight undefined eitherCommit3
+
+    ----------------
+
+    let stringHash1 = Just (H.hashToString hash1)
+    let stringHash2 = Just (H.hashToString hash2)
+    let stringHash3 = Just (H.hashToString hash3)
+
+    runEitherT $ H.createBranch "branch-1" stringHash1 quietPrinter
+    runEitherT $ H.createBranch "branch-2" stringHash2 quietPrinter
+    runEitherT $ H.createBranch "branch-3" stringHash3 quietPrinter
+
+    let branch1 = Right (Just (Branch "branch-1" hash1 True))
+    let branch2 = Right (Just (Branch "branch-2" hash2 True))
+    let branch3 = Right (Just (Branch "branch-3" hash3 True))
+
+    -- try multiple combinations of gaps and orders and such
+    test1 "branch-1" branch1
+    test2 "branch-2" branch2
+    test3 "branch-3" branch3
+    test2 "branch-2" branch2
+    test1 "branch-1" branch1
+    test3 "branch-3" branch3
+    test1 "branch-1" branch1
+
+    return ()
+    where
+        test1 :: Hash -> (Either Error (Maybe Branch)) -> Assertion
+        test1 hash expectedCurrentBranch = do
+            quietCheckout . H.hashToString $ hash
+
+            b <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
+            b @?= expectedCurrentBranch
+
+            aContents <- readFile "a"
+            aContents @?= "1"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
+
+        test2 :: Hash -> (Either Error (Maybe Branch)) -> Assertion
+        test2 hash expectedCurrentBranch = do
+            quietCheckout . H.hashToString $ hash
+
+            b <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
+            b @?= expectedCurrentBranch
+
+            aContents <- readFile "a"
+            aContents @?= "2"
+
+            aContents <- readFile "b"
+            aContents @?= "2"
+            return ()
+
+        test3 :: Hash -> (Either Error (Maybe Branch)) -> Assertion
+        test3 hash expectedCurrentBranch = do
+            quietCheckout . H.hashToString $ hash
+
+            b <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
+            b @?= expectedCurrentBranch
+
+            aContents <- readFile "a"
+            aContents @?= "3"
+
+            bExists <- D.doesFileExist "b"
+            (not bExists) @? "`b` should not exist."
+            return ()
 
 
 -- test delete GCs
@@ -3024,6 +3123,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing undefined ancestor syntax"
         (runTest testUndefinedAncestorSyntax)
+    , testCase
+        "Testing command `checkout` changes current branch"
+        (runTest testCheckoutChangesCurrentBranch)
     ]
 
 tests :: TestTree

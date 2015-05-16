@@ -11,6 +11,7 @@ module Horse.Utils
 , toMaybe
 , whenM
 , unlessM
+, hushT
 
 -- * combinators
 , (|<$>|)
@@ -21,6 +22,7 @@ import Prelude hiding (print, putStrLn)
 import qualified Prelude (print)
 
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO)
 
@@ -36,10 +38,18 @@ import qualified Data.Convertible as Convert
 
 -- * conversions
 
+hushT :: (Monad m) => EitherT l m r -> MaybeT m r
+hushT = MaybeT . liftM eitherToMaybe . runEitherT
+
 -- | Convert, with a error message to be used if the `Maybe` is `Nothing`.
 maybeToEither :: Error -> Maybe b -> Either Error b
 maybeToEither error Nothing = Left error
 maybeToEither _ (Just x) = Right x
+
+-- | Convert, supressing the error message.
+eitherToMaybe :: Either l r -> Maybe r
+eitherToMaybe (Left _) = Nothing
+eitherToMaybe (Right r) = Just r
 
 -- | Pick (in decreasing order of preference) if exists: the `Right` value
 --   in the `Either`, the `Just` value in the `Maybe` or the default value

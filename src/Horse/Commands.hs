@@ -53,8 +53,6 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 
-import Control.Error.Util
-
 -- qualified imports
 
 import qualified Zora.List as ZL (take_while_keep_last)
@@ -111,6 +109,7 @@ import Horse.Utils
     , (</>)
     , whenM
     , unlessM
+    , hushT
     , toMaybe )
 import qualified Horse.IO as HIO
 import qualified Horse.Printing as HP

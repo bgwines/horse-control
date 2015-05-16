@@ -79,3 +79,5 @@ Thanksto
 --------
 
 * https://robots.thoughtbot.com/applicative-options-parsing-in-haskell
+* http://nikita-volkov.github.io/profiling-cabal-projects/
+* http://guillaume-nargeot.github.io/haskell/2014/04/01/haskell-code-coverage-coveralls-support/

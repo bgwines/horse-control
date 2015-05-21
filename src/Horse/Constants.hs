@@ -71,7 +71,7 @@ import Filesystem.Path.CurrentOS (decodeString, encodeString)
 
 import Horse.Types
 import Horse.Utils
-    ( maybeToEither
+    ( note
     , iterateMaybe
     , toMaybe
     , (</>)

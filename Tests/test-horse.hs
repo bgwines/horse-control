@@ -2797,58 +2797,83 @@ testCheckoutChangesCurrentBranch = do
             (not bExists) @? "`b` should not exist."
             return ()
 
+testCheckoutDoesNotChangeCurrentBranch :: Assertion
+testCheckoutDoesNotChangeCurrentBranch = do
+    runEitherT $ H.init quietPrinter
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight undefined eitherCommit1
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    currentBranch <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
+    currentBranch @?= Right (Just (Branch "master" hash2 True))
+
+    runEitherT $ H.checkout "HEAD^"
+
+    newCurrentBranch <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
+    newCurrentBranch @?= Right Nothing
 
 -- test delete GCs
 
 commandTests :: TestTree
 commandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
-        "Testing command `status` run without a repo"
+        "Testing `status` run without a repo"
         (runTest testNoRepoStatus)
     , testCase
-        "Testing command `stage` run without a repo"
+        "Testing `stage` run without a repo"
         (runTest testNoRepoStage)
     , testCase
-        "Testing command `checkout` run without a repo"
+        "Testing `checkout` run without a repo"
         (runTest testNoRepoCheckout)
     , testCase
-        "Testing command `commit` run without a repo"
+        "Testing `commit` run without a repo"
         (runTest testNoRepoCommit)
     , testCase
-        "Testing command `show` run without a repo"
+        "Testing `show` run without a repo"
         (runTest testNoRepoShow)
     , testCase
-        "Testing command `log` run without a repo"
+        "Testing `log` run without a repo"
         (runTest testNoRepoLog)
     , testCase
-        "Testing command `squash` run without a repo"
+        "Testing `squash` run without a repo"
         (runTest testNoRepoSquash)
     , testCase
-        "Testing command `untrack` run without a repo"
+        "Testing `untrack` run without a repo"
         (runTest testNoRepoUntrack)
     , testCase
-        "Testing command `untrack --list` run without a repo"
+        "Testing `untrack --list` run without a repo"
         (runTest testNoRepoListUntracked)
     , testCase
-        "Testing command `retrack` run without a repo"
+        "Testing `retrack` run without a repo"
         (runTest testNoRepoRetrack)
     , testCase
-        "Testing command `config` run without a repo"
+        "Testing `config` run without a repo"
         (runTest testNoRepoConfig)
     , testCase
-        "Testing command `diff` run without a repo"
+        "Testing `diff` run without a repo"
         (runTest testNoRepoDiff)
     , testCase
-        "Testing command `branch list` run without a repo"
+        "Testing `branch list` run without a repo"
         (runTest testNoRepoBranchList)
     , testCase
-        "Testing command `branch delete` run without a repo"
+        "Testing `branch delete` run without a repo"
         (runTest testNoRepoBranchDelete)
     , testCase
-        "Testing command `branch create` run without a repo"
+        "Testing `branch create` run without a repo"
         (runTest testNoRepoBranchCreate)
     --, testCase
-    --    "Testing command `branch set` run without a repo"
+    --    "Testing `branch set` run without a repo"
     --    (runTest testNoRepoBranchSet)
     , testCase
         "Testing `horse init`"
@@ -2878,61 +2903,61 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing `horse log` (edge case 5)"
         (runTest testLogTooFarBackSyntax)
     , testCase
-        "Testing command `stage`"
+        "Testing `stage`"
         (runTest testStage)
     , testCase
-        "Testing command `stage` (edge case 1)"
+        "Testing `stage` (edge case 1)"
         (runTest testStagePathOutsideOfRepo)
     , testCase
-        "Testing command `stage` (edge case 1)"
+        "Testing `stage` (edge case 1)"
         (runTest testStageNonexistentFile)
     , testCase
-        "Testing command `stage` (edge case 2)"
+        "Testing `stage` (edge case 2)"
         (runTest testStageNonexistentDirectory)
     , testCase
-        "Testing command `stage` (edge case 3)."
+        "Testing `stage` (edge case 3)."
         (runTest testStageCurrentDirectoryRemovedFile)
     , testCase
-        "Testing command `stage` when given a directory"
+        "Testing `stage` when given a directory"
         (runTest testStageDirectory)
     , testCase
-        "Testing command `stage` when given a directory (edge case 1)"
+        "Testing `stage` when given a directory (edge case 1)"
         (runTest testStageDirectoryEdgeCase1)
     , testCase
-        "Testing command `stage` when given a directory (edge case 2)"
+        "Testing `stage` when given a directory (edge case 2)"
         (runTest testStageDirectoryEdgeCase2)
     , testCase
-        "Testing command `stage` when given a directory (edge case 3)"
+        "Testing `stage` when given a directory (edge case 3)"
         (runTest testStageDirectoryEdgeCase3)
     , testCase
-        "Testing command `stage` when given a directory (edge case 4)"
+        "Testing `stage` when given a directory (edge case 4)"
         (runTest testStageDirectoryEdgeCase4)
     , testCase
-        "Testing command `stage` when given a directory (edge case 5)"
+        "Testing `stage` when given a directory (edge case 5)"
         (runTest testStageDirectoryEdgeCase5)
     , testCase
-        "Testing command `stage` when given a directory (edge case 6)"
+        "Testing `stage` when given a directory (edge case 6)"
         (runTest testStageDirectoryEdgeCase6)
     , testCase
-        "Testing command `stage` when given a directory (edge case 7)."
+        "Testing `stage` when given a directory (edge case 7)."
         (runTest testStagingHorseDir)
     , testCase
-        "Testing command `status` (case 1)"
+        "Testing `status` (case 1)"
         (runTest testStatusCase1)
     , testCase
-        "Testing command `status` (case 2)"
+        "Testing `status` (case 2)"
         (runTest testStatusCase2)
     , testCase
-        "Testing command `status` (case 3)"
+        "Testing `status` (case 3)"
         (runTest testStatusCase3)
     , testCase
-        "Testing command `status` (case 4)"
+        "Testing `status` (case 4)"
         (runTest testStatusCase4)
     , testCase
-        "Testing command `status` (case 5)"
+        "Testing `status` (case 5)"
         (runTest testStatusCase5)
     , testCase
-        "Testing command `checkout`"
+        "Testing `checkout`"
         (runTest testCheckout)
     , testCase
         "Testing executing command `status` from subdirectory"
@@ -2977,19 +3002,19 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing staging same file twice with changes in between"
         (runTest testStageSameFileTwiceWithChanges)
     , testCase
-        "Testing command `unstage`"
+        "Testing `unstage`"
         (runTest testUnstage)
     , testCase
-        "Testing command `unstage` (edge case 1)"
+        "Testing `unstage` (edge case 1)"
         (runTest testUnstageNonexistentPath)
     , testCase
-        "Testing command `unstage` (edge case 2)"
+        "Testing `unstage` (edge case 2)"
         (runTest testUnstageUnstagedFile)
     , testCase
-        "Testing command `unstage` (edge case 3)"
+        "Testing `unstage` (edge case 3)"
         (runTest testUnstagePathOutsideOfRepo)
     , testCase
-        "Testing command `unstage` when given a directory"
+        "Testing `unstage` when given a directory"
         (runTest testUnstageDirectory)
     , testCase
         "Testing committing with no staged files"
@@ -2998,134 +3023,137 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing staging a file with no changes"
         (runTest testStageFileWithNoChanges)
     , testCase
-        "Testing command `checkout` changes HEAD"
+        "Testing `checkout` changes HEAD"
         (runTest testCheckoutChangesHEAD)
     , testCase
-        "Testing command `checkout` given with truncated hash"
+        "Testing `checkout` given with truncated hash"
         (runTest testCheckoutTruncatedHash)
     , testCase
-        "Testing command `checkout` given a bad truncated hash (case 1)"
+        "Testing `checkout` given a bad truncated hash (case 1)"
         (runTest testCheckoutBadTruncatedHash1)
     , testCase
-        "Testing command `checkout` given a bad truncated hash (case 2)"
+        "Testing `checkout` given a bad truncated hash (case 2)"
         (runTest testCheckoutBadTruncatedHash2)
     , testCase
-        "Testing command `checkout` given colliding truncated hashes"
+        "Testing `checkout` given colliding truncated hashes"
         (runTest testCheckoutCollidingTruncatedHashes)
     , testCase
-        "Testing command `checkout` given relative hash (case 1)"
+        "Testing `checkout` given relative hash (case 1)"
         (runTest testCheckoutRelativeSyntaxCaret)
     , testCase
-        "Testing command `checkout` given relative hash (case 2)"
+        "Testing `checkout` given relative hash (case 2)"
         (runTest testCheckoutRelativeSyntaxTilde)
     , testCase
-        "Testing command `checkout` given truncated relative hash"
+        "Testing `checkout` given truncated relative hash"
         (runTest testCheckoutTruncatedRelativeSyntax)
     , testCase
-        "Testing command `checkout` given relative hash (edge case 1)"
+        "Testing `checkout` given relative hash (edge case 1)"
         (runTest testCheckoutRelativeSyntaxTildeZero)
     , testCase
-        "Testing command `untrack`"
+        "Testing `untrack`"
         (runTest testUntrack)
     , testCase
-        "Testing command `untrack` multiple times"
+        "Testing `untrack` multiple times"
         (runTest testUntrackMultipleTimes)
     , testCase
-        "Testing command `untrack` (given a directory)"
+        "Testing `untrack` (given a directory)"
         (runTest testUntrackGivenDirectory)
     , testCase
-        "Testing command `untrack` from a subdirectory"
+        "Testing `untrack` from a subdirectory"
         (runTest testUntrackGivenDirectoryFromSubdir)
     , testCase
-        "Testing command `untrack` by untracking a file and then staging it"
+        "Testing `untrack` by untracking a file and then staging it"
         (runTest testStagingUntrackedFile)
     , testCase
-        "Testing command `retrack`"
+        "Testing `retrack`"
         (runTest testRetrack)
     , testCase
-        "Testing command `retrack` (given a directory)"
+        "Testing `retrack` (given a directory)"
         (runTest testRetrackGivenDirectory)
     , testCase
-        "Testing command `retrack` from a subdirectory"
+        "Testing `retrack` from a subdirectory"
         (runTest testRetrackGivenDirectoryFromSubdir)
     , testCase
-        "Testing command `config` (no previously existing config file)"
+        "Testing `config` (no previously existing config file)"
         (runTest testConfigFirstTime)
     , testCase
-        "Testing command `config` (previously existing config file)"
+        "Testing `config` (previously existing config file)"
         (runTest testConfigNotFirstTime)
     , testCase
-        "Testing command `config` (first time, no params supplied)"
+        "Testing `config` (first time, no params supplied)"
         (runTest testConfigFirstTimeNoParams)
     , testCase
-        "Testing command `untrack` given a path outside of the repo"
+        "Testing `untrack` given a path outside of the repo"
         (runTest testUntrackPathOutsideOfRepo)
     , testCase
-        "Testing command `retrack` given a path outside of the repo"
+        "Testing `retrack` given a path outside of the repo"
         (runTest testUngnorePathOutsideOfRepo)
     , testCase
-        "Testing command `show` given no arguments"
+        "Testing `show` given no arguments"
         (runTest testShowNoArg)
     , testCase
         "Testing failure of combining ^ and ~ syntax"
         (runTest testRelativeSyntaxErrorCase)
     , testCase
-        "Testing command `untrack` when removing a file."
+        "Testing `untrack` when removing a file."
         (runTest testRemovingUntrackedFile)
     , testCase
-        "Testing command `retrack` when given a never-untracked file."
+        "Testing `retrack` when given a never-untracked file."
         (runTest testRetrackingNeverUntrackedFile)
     , testCase
-        "Testing command `untrack` when given a staged file."
+        "Testing `untrack` when given a staged file."
         (runTest testUntrackingStagedFile)
     , testCase
-        "Testing command `diff`"
+        "Testing `diff`"
         (runTest testDiff)
     , testCase
-        "Testing command `diff` run from a subdirectory"
+        "Testing `diff` run from a subdirectory"
         (runTest testDiffFromSubdir)
     , testCase
-        "Testing command `diff` run without any commits made"
+        "Testing `diff` run without any commits made"
         (runTest testDiffNoCommitsHaveBeenMade)
     , testCase
-        "Testing command `branch list` run after the first commit"
+        "Testing `branch list` run after the first commit"
         (runTest testInitialCommitCreatesNewBranch)
     , testCase
-        "Testing command `commit` advances current branch"
+        "Testing `commit` advances current branch"
         (runTest testCommitAdvancesCurrentBranch)
     , testCase
-        "Testing command `branch create` creates a new branch from HEAD"
+        "Testing `branch create` creates a new branch from HEAD"
         (runTest testBranchCreateCreatesNewBranch)
     , testCase
-        "Testing command `branch create` creates a new branch from ref"
+        "Testing `branch create` creates a new branch from ref"
         (runTest testBranchCreateCreatesNewBranchFromRef)
     , testCase
-        "Testing command `branch delete` when given the current branch"
+        "Testing `branch delete` when given the current branch"
         (runTest testCannotDeleteCurrentBranch)
     , testCase
-        "Testing command `branch delete` when given a non-current branch"
+        "Testing `branch delete` when given a non-current branch"
         (runTest testCanDeleteNoncurrentBranch)
     , testCase
-        "Testing command `branch delete` when given a nonexistent branch"
+        "Testing `branch delete` when given a nonexistent branch"
         (runTest testDeleteNonexistentBranch)
     , testCase
-        "Testing command `log` when given a branch"
+        "Testing `log` when given a branch"
         (runTest testLogGivenBranch)
     , testCase
-        "Testing command `log` when given a branch with relative syntax"
+        "Testing `log` when given a branch with relative syntax"
         (runTest testLogGivenBranchWithRelativeSyntax)
     , testCase
-        "Testing command `checkout` when given a branch"
+        "Testing `checkout` when given a branch"
         (runTest testCheckoutGivenBranch)
     , testCase
-        "Testing command `checkout` when given a branch with relative syntax"
+        "Testing `checkout` when given a branch with relative syntax"
         (runTest testCheckoutGivenBranchWithRelativeSyntax)
     , testCase
         "Testing undefined ancestor syntax"
         (runTest testUndefinedAncestorSyntax)
     , testCase
-        "Testing command `checkout` changes current branch"
+        "Testing `checkout` changes current branch when given a branch"
         (runTest testCheckoutChangesCurrentBranch)
+    , testCase
+        "Testing `checkout` doesn't change curr. branch when given not a branch"
+        (runTest testCheckoutDoesNotChangeCurrentBranch)
     ]
 
 tests :: TestTree

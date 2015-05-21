@@ -72,7 +72,7 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (maybeToEither)
+import Horse.Utils (note)
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
 
@@ -119,7 +119,7 @@ loadCommit key = do
         maybeCommit <- DB.get db Default.def key
         DBInternal.unsafeClose db
         return maybeCommit
-    commit <- hoistEither $ maybeToEither loadErrorMessage maybeCommit
+    commit <- hoistEither $ note loadErrorMessage maybeCommit
     hoistEither $ Serialize.decode commit
     where
         loadErrorMessage :: String

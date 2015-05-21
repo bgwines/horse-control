@@ -1,7 +1,8 @@
 -- | Utility functions used by the implementation.
 module Horse.Utils
 ( -- * conversions
-  maybeToEither
+  note
+--, hush
 , fromEitherMaybeDefault
 --, stringToHash
 , hashToString
@@ -38,18 +39,19 @@ import qualified Data.Convertible as Convert
 
 -- * conversions
 
+-- 'hush' for the respective monad transformers.
 hushT :: (Monad m) => EitherT l m r -> MaybeT m r
-hushT = MaybeT . liftM eitherToMaybe . runEitherT
+hushT = MaybeT . liftM hush . runEitherT
 
 -- | Convert, with a error message to be used if the `Maybe` is `Nothing`.
-maybeToEither :: Error -> Maybe b -> Either Error b
-maybeToEither error Nothing = Left error
-maybeToEither _ (Just x) = Right x
+note :: Error -> Maybe b -> Either Error b
+note error Nothing = Left error
+note _ (Just x) = Right x
 
 -- | Convert, supressing the error message.
-eitherToMaybe :: Either l r -> Maybe r
-eitherToMaybe (Left _) = Nothing
-eitherToMaybe (Right r) = Just r
+hush :: Either l r -> Maybe r
+hush (Left _) = Nothing
+hush (Right r) = Just r
 
 -- | Pick (in decreasing order of preference) if exists: the `Right` value
 --   in the `Either`, the `Just` value in the `Maybe` or the default value

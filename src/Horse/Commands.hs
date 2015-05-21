@@ -104,7 +104,7 @@ import Horse.Types
 import Horse.Utils
     ( hashToString
     , (|<$>|)
-    , maybeToEither
+    , note
     , fromEitherMaybeDefault
     , (</>)
     , whenM
@@ -495,16 +495,28 @@ checkout' ref = do
     checkoutToDirectory "." hash
     liftIO $ HIO.writeHeadHash hash
 
-    -- if checking out a branch, make it current.
-    allBranches <- HIO.loadAllBranches
-    let maybeBranch = find ((==) ref . branchName) allBranches
-    when (isJust maybeBranch) $ do
-        let branch = fromJust maybeBranch
-        let otherBranches = filter ((/=) ref . branchName) allBranches
-        let updatedOtherBranches = map makeNotCurrent otherBranches
-        let updatedBranches = makeCurrent branch : updatedOtherBranches
-        liftIO $ HIO.writeAllBranches updatedBranches
+    -- if checking out a branch, make it current; otherwise,
+    -- make all branches not current.
+    isBranch <- isBranchRef ref
+    updatedBranches <- if isBranch
+        then do
+            branch <- loadBranchFromRef ref
+            otherBranches <- HIO.loadAllBranches >>= right . filter ((/=) ref . branchName)
+            right (makeCurrent branch : map makeNotCurrent otherBranches)
+        else map makeNotCurrent <$> HIO.loadAllBranches
+    liftIO $ HIO.writeAllBranches updatedBranches
     where
+        isBranchRef :: String -> EIO Bool
+        isBranchRef ref =
+            HIO.loadAllBranches >>= right . any ((==) ref . branchName)
+
+        loadBranchFromRef :: String -> EIO Branch
+        loadBranchFromRef ref =
+            HIO.loadAllBranches
+            >>= hoistEither
+                . note ("Could not load branch from ref " ++ ref)
+                . find ((==) ref . branchName)
+
         makeNotCurrent :: Branch -> Branch
         makeNotCurrent b@(Branch name hash _) = Branch name hash False
 

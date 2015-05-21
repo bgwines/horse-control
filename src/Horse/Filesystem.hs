@@ -22,6 +22,8 @@ import Control.Monad.Trans.Either
 
 import Control.Exception.Base (assert)
 
+import Control.Conditional (whenM)
+
 import Data.Maybe
 import Data.List ((\\))
 
@@ -37,7 +39,6 @@ import qualified Data.ByteString as ByteString
 import Horse.Types
 import Horse.Utils
     ( (</>)
-    , whenM
     , iterateMaybe
     , toMaybe )
 import qualified Horse.Constants as HC

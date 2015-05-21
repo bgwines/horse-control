@@ -32,6 +32,7 @@ module Horse.IO
 
 -- * assorted
 , loadHistory
+, commitsHaveBeenMade
 ) where
 
 -- imports
@@ -232,3 +233,8 @@ loadHistory commit = do
                     . parentHash
                     $ commit
                 else MaybeT $ return Nothing
+
+-- | Identifies whether any commits have been made in the current
+--   repository.
+commitsHaveBeenMade :: EIO Bool
+commitsHaveBeenMade = (/=) Default.def <$> loadHeadHash

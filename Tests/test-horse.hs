@@ -51,6 +51,7 @@ import Data.Either.Combinators (isLeft, isRight, fromLeft, fromRight)
 import Horse.Types
 
 import qualified Horse.IO as H
+import qualified Horse.Refs as H
 import qualified Horse.Utils as H
 import qualified Horse.Commands as H
 import qualified Horse.Constants as H
@@ -90,10 +91,10 @@ createFileWithContents filepath contents = do
     IO.hPutStr handle contents
     IO.hClose handle
 
-quietCommit :: Maybe String -> EIO Commit
+quietCommit :: Maybe String -> EitherT Error IO Commit
 quietCommit m = H.commit def m quietPrinter
 
-noargCommit :: EIO Commit
+noargCommit :: EitherT Error IO Commit
 noargCommit = H.commit def Nothing quietPrinter
 
 getStatus :: IO Status
@@ -227,11 +228,35 @@ testFromEitherMaybeDefault = do
     c @?= 4
     d @?= 4
 
+testHush :: Assertion
+testHush = do
+    let l :: Either Int () = Left 3
+    let r :: Either () Int = Right 3
+    H.hush l @?= Nothing
+    H.hush r @?= Just 3
+
 utilsTests :: TestTree
 utilsTests = testGroup "unit tests (Horse.Utils)"
     [ testCase
         "Testing `fromEitherMaybeDefault`"
-        (runTest testFromEitherMaybeDefault)
+        testFromEitherMaybeDefault
+    , testCase
+        "Testing `hush`"
+        testHush
+    ]
+
+testLoadBranchFromRefErrorCase :: Assertion
+testLoadBranchFromRefErrorCase = do
+    runEitherT $ H.init quietPrinter
+
+    b <- runEitherT $ H.loadBranchFromRef "nonexistent"
+    b @?= Left "Could not load branch from ref: nonexistent"
+
+refsTests :: TestTree
+refsTests = testGroup "unit tests (Horse.Refs)"
+    [ testCase
+        "Testing `loadBranchFromRef`"
+        (runTest testLoadBranchFromRefErrorCase)
     ]
 
 testLoadCommitErrorCase :: Assertion
@@ -685,7 +710,7 @@ testInitAgainInSubdir = do
 
     D.setCurrentDirectory ".."
 
-testNoRepo :: (Eq a, Show a) => EIO a -> Assertion
+testNoRepo :: (Eq a, Show a) => EitherT Error IO a -> Assertion
 testNoRepo = (=<<) ((@?=) $ Left "Fatal: Not a horse repository (or any of the ancestor directories).") . runEitherT
 
 testNoRepoStatus :: Assertion
@@ -2823,6 +2848,48 @@ testCheckoutDoesNotChangeCurrentBranch = do
     newCurrentBranch <- runEitherT $ find isCurrentBranch <$> H.loadAllBranches
     newCurrentBranch @?= Right Nothing
 
+testCannotCreateSameBranchTwice :: Assertion
+testCannotCreateSameBranchTwice = do
+    runEitherT $ H.init quietPrinter
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let commitHash = hash $ fromRight undefined eitherCommit1
+
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    b @?= Right (Branch "newbranch" commitHash False)    
+
+    b' <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    b' @?= Left "Fatal: branch already exists: newbranch"
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "newbranch" commitHash False, Branch "master" commitHash True]
+
+testCannotCreateDefaultBranch :: Assertion
+testCannotCreateDefaultBranch = do
+    runEitherT $ H.init quietPrinter
+
+    createFileWithContents "a" "1"
+
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let commitHash = hash $ fromRight undefined eitherCommit1
+
+    b <- runEitherT $ H.createBranch "master" Nothing quietPrinter
+    b @?= Left "Fatal: branch already exists: master"
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "master" commitHash True]
+
+testCannotCreateBranchWithNoCommits :: Assertion
+testCannotCreateBranchWithNoCommits = do
+    runEitherT $ H.init quietPrinter
+
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+    b @?= Left "Fatal: cannot create branch when no commits have been made."
+
 -- test delete GCs
 
 commandTests :: TestTree
@@ -3154,10 +3221,22 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing `checkout` doesn't change curr. branch when given not a branch"
         (runTest testCheckoutDoesNotChangeCurrentBranch)
+    , testCase
+        "Testing `branch create` branch already exists."
+        (runTest testCannotCreateSameBranchTwice)
+    , testCase
+        "Testing `branch create` when given the same branch twice"
+        (runTest testCannotCreateSameBranchTwice)
+    , testCase
+        "Testing `branch create` when given the default branch"
+        (runTest testCannotCreateDefaultBranch)
+    , testCase
+        "Testing `branch create` without any commits"
+        (runTest testCannotCreateBranchWithNoCommits)
     ]
 
 tests :: TestTree
-tests = testGroup "All tests" [commandTests, filesystemTests, ioTests, utilsTests]
+tests = testGroup "All tests" [commandTests, filesystemTests, ioTests, utilsTests, refsTests]
 
 main :: IO ()
 main = defaultMain tests

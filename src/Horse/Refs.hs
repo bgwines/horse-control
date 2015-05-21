@@ -2,6 +2,8 @@
 -- | Utility functions for parsing refs and loading things from them.
 module Horse.Refs
 ( refToHash
+, isBranchRef
+, loadBranchFromRef
 ) where
 
 import Control.Monad
@@ -9,10 +11,11 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Either
 
 import Data.Char (isDigit)
+import Data.List (find)
 
 import qualified Data.ByteString as BS (take)
 
-import Horse.Utils (hashToString)
+import Horse.Utils (hashToString, note)
 import Horse.Types
 import qualified Horse.IO as HIO
 import qualified Horse.Filesystem as HF
@@ -84,3 +87,14 @@ refToHash unparsedRef = do
                 0 -> left $ "Fatal: ref " ++ Prelude.show baseRef ++ " does not match any branch names or stored hashes"
                 1 -> right $ head matching
                 _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ Prelude.show matching
+
+isBranchRef :: String -> EIO Bool
+isBranchRef ref =
+    HIO.loadAllBranches >>= right . any ((==) ref . branchName)
+
+loadBranchFromRef :: String -> EIO Branch
+loadBranchFromRef ref =
+    HIO.loadAllBranches
+    >>= hoistEither
+        . note ("Could not load branch from ref: " ++ ref)
+        . find ((==) ref . branchName)

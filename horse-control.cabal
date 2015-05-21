@@ -18,7 +18,7 @@ cabal-version:       >=1.10
 
 Library
   Exposed-Modules: Horse.Commands, Horse.Types, Horse.IO, Horse.Utils, Horse.Constants, Horse.Filesystem, Horse.Printing, Horse.Refs
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras, tasty, tasty-hunit, Zora >= 1.1.23, shelly, punycode, text, system-filepath, filediff >= 1.0.0.5, rainbow, errors
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras, tasty, tasty-hunit, Zora >= 1.1.23, shelly, punycode, text, system-filepath, filediff >= 1.0.0.5, rainbow, errors, cond
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -30,12 +30,15 @@ Library
 
 executable horse
   main-is:             Main.hs 
-  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras, tasty, tasty-hunit, Zora >= 1.1.23, shelly, punycode, text, system-filepath, filediff >= 1.0.0.5, rainbow, errors
+  build-depends:       base >=4.7 && <4.8, directory, leveldb-haskell >= 0.6.1, time, cereal, transformers, cryptohash, bytestring, data-default, hex, convertible, optparse-applicative, syb, mtl, either, monad-extras, tasty, tasty-hunit, Zora >= 1.1.23, shelly, punycode, text, system-filepath, filediff >= 1.0.0.5, rainbow, errors, cond
   ghc-options:
     -O2
     -threaded
   hs-source-dirs:      src
   default-language:    Haskell2010
+
+-- to enable code coverage:
+--     cabal configure --enable-coverage --enable-tests
 
 Test-Suite test-horse
     type:       exitcode-stdio-1.0

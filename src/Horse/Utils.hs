@@ -2,7 +2,7 @@
 module Horse.Utils
 ( -- * conversions
   note
---, hush
+, hush
 , fromEitherMaybeDefault
 --, stringToHash
 , hashToString
@@ -10,8 +10,6 @@ module Horse.Utils
 -- * general
 , iterateMaybe
 , toMaybe
-, whenM
-, unlessM
 , hushT
 
 -- * combinators
@@ -83,14 +81,6 @@ iterateMaybe :: (a -> Maybe a) -> a -> [a]
 iterateMaybe f curr = case f curr of
     Nothing -> []
     (Just next) -> (:) next $ iterateMaybe f next
-
--- | Monadic `when`.
-whenM :: Monad m => m Bool -> m () -> m ()
-whenM mCond action = mCond >>= (`when` action)
-
--- | Monadic `unless`.
-unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM mCond action = mCond >>= (`unless` action)
 
 -- * combinators
 

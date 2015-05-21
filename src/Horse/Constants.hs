@@ -74,8 +74,7 @@ import Horse.Utils
     ( note
     , iterateMaybe
     , toMaybe
-    , (</>)
-    , whenM )
+    , (</>) )
 
 -- * paths
 

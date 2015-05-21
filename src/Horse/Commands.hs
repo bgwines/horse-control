@@ -84,6 +84,8 @@ import Data.List
     , isPrefixOf
     , nub )
 
+import Control.Conditional (whenM, unlessM)
+
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -101,8 +103,6 @@ import Horse.Utils
     , note
     , fromEitherMaybeDefault
     , (</>)
-    , whenM
-    , unlessM
     , toMaybe )
 import qualified Horse.Refs as HR
 import qualified Horse.IO as HIO
@@ -130,6 +130,11 @@ createBranch branchName maybeRef printer = executeCommand (createBranch' branchN
 
 createBranch' :: String -> Maybe String -> Printer -> EIO Branch
 createBranch' branchName maybeRef (Printer _ putStrLn _ _ _) = do
+    whenM (HR.isBranchRef branchName)
+        (left ("Fatal: branch already exists: " ++ branchName))
+    unlessM HIO.commitsHaveBeenMade
+        (left "Fatal: cannot create branch when no commits have been made.")
+
     hash <- fromMaybe HIO.loadHeadHash (HR.refToHash <$> maybeRef)
 
     let newBranch = Branch branchName hash False
@@ -369,7 +374,7 @@ commitAmend hasher maybeMessage printer =
 --   then clears the staging area.
 commitAmend' :: CommitHasher -> Maybe String -> Printer -> EIO Commit
 commitAmend' hasher maybeMessage printer = do
-    unlessM commitsHaveBeenMade $
+    unlessM HIO.commitsHaveBeenMade $
         left "Fatal: cannot amend when no commits have been made."
 
     latestCommit <- commit hasher maybeMessage printer
@@ -486,26 +491,15 @@ checkout' ref = do
 
     -- if checking out a branch, make it current; otherwise,
     -- make all branches not current.
-    isBranch <- isBranchRef ref
+    isBranch <- HR.isBranchRef ref
     updatedBranches <- if isBranch
         then do
-            branch <- loadBranchFromRef ref
+            branch <- HR.loadBranchFromRef ref
             allBranches <- HIO.loadAllBranches
             let otherBranches = filter ((/=) ref . branchName) allBranches
             right (makeCurrent branch : map makeNotCurrent otherBranches)
         else map makeNotCurrent <$> HIO.loadAllBranches
     liftIO $ HIO.writeAllBranches updatedBranches
-    where
-        isBranchRef :: String -> EIO Bool
-        isBranchRef ref =
-            HIO.loadAllBranches >>= right . any ((==) ref . branchName)
-
-        loadBranchFromRef :: String -> EIO Branch
-        loadBranchFromRef ref =
-            HIO.loadAllBranches
-            >>= hoistEither
-                . note ("Could not load branch from ref " ++ ref)
-                . find ((==) ref . branchName)
 
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
@@ -535,7 +529,7 @@ log maybeRef maybeNumCommits printer =
 --   in the history.
 log' :: Maybe String -> Maybe Int -> Printer -> EIO [Commit]
 log' maybeRef maybeNumCommits printer = do
-    haveCommitsBeenMade <- commitsHaveBeenMade
+    haveCommitsBeenMade <- HIO.commitsHaveBeenMade
     history <- if haveCommitsBeenMade
         then do
             commitHash <- maybe HIO.loadHeadHash HR.refToHash maybeRef
@@ -556,7 +550,7 @@ diff = executeCommand . diff'
 -- | Prints out the difference between the working directory and HEAD
 diff' :: Printer -> EIO FD.Diff
 diff' printer = do
-    unlessM commitsHaveBeenMade $
+    unlessM HIO.commitsHaveBeenMade $
         left "Fatal: can't diff with HEAD when no commits have been made."
 
     theDiff <- diffWithHEADAllFiles
@@ -578,11 +572,6 @@ getRelativePaths relativePath = do
     let filtered = filter (not . isInfixOf HC.repositoryDataDir) unfiltered
 
     right $ map (\p -> if "./" `isPrefixOf` p then drop 2 p else p) filtered
-
--- | Identifies whether any commits have been made in the current
---   repository.
-commitsHaveBeenMade :: EIO Bool
-commitsHaveBeenMade = (/=) Default.def <$> HIO.loadHeadHash
 
 -- | Checks out the specified hash to the specified directory. *NOTE*:
 --   will entirely overwrite the contents of the specified directory;
@@ -634,7 +623,7 @@ diffWithHEAD' maybeFilesToDiff = do
     -- if no commits have been made; no point in filling the directory
     -- since HEAD doesn't exist so it would result in an empty diff
     -- anyway.
-    whenM commitsHaveBeenMade $
+    whenM HIO.commitsHaveBeenMade $
         HIO.loadHeadHash >>= checkoutToDirectory headDir
 
     untrackedPaths <- listUntrackedPaths quietPrinter

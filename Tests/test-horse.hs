@@ -90,10 +90,10 @@ createFileWithContents filepath contents = do
     IO.hPutStr handle contents
     IO.hClose handle
 
-quietCommit :: Maybe String -> EitherT Error IO Commit
+quietCommit :: Maybe String -> EIO Commit
 quietCommit m = H.commit def m quietPrinter
 
-noargCommit :: EitherT Error IO Commit
+noargCommit :: EIO Commit
 noargCommit = H.commit def Nothing quietPrinter
 
 getStatus :: IO Status
@@ -685,7 +685,7 @@ testInitAgainInSubdir = do
 
     D.setCurrentDirectory ".."
 
-testNoRepo :: (Eq a, Show a) => EitherT Error IO a -> Assertion
+testNoRepo :: (Eq a, Show a) => EIO a -> Assertion
 testNoRepo = (=<<) ((@?=) $ Left "Fatal: Not a horse repository (or any of the ancestor directories).") . runEitherT
 
 testNoRepoStatus :: Assertion

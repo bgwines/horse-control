@@ -9,6 +9,7 @@ module Horse.Types(
 -- * Records and their accessor functions
   UserInfo(..)
 , Commit(..)
+, hasParent
 
 , StagingArea(..)
 , files
@@ -26,6 +27,10 @@ module Horse.Types(
 , normalPrinter
 
 , Branch(..)
+, makeCurrent
+, makeNotCurrent
+
+, EIO(..)
 
 -- * Aliases
 , EmailAddress
@@ -41,8 +46,11 @@ import qualified Prelude as P (print, putStr, putStrLn)
 import qualified Rainbow as R
 
 import Control.Monad
+import Control.Monad.Trans.Either
 
 import GHC.Generics
+
+import Data.Maybe (isJust)
 
 import qualified Data.Hex as Hex
 
@@ -79,6 +87,9 @@ instance Serialize FD.Diff
 
 -- Not using `null` is the hack described below to increase code coverage.
 {-# ANN module "HLint: ignore Use null" #-}
+
+-- | Shorthand.
+type EIO a = EitherT Error IO a
 
 -- | Data type for any kind of error.
 type Error = String
@@ -121,6 +132,9 @@ data Commit = Commit {
 } deriving (Eq, Show, Generic)
 
 instance Serialize Commit
+
+hasParent :: Commit -> Bool
+hasParent = isJust . parentHash
 
 -- | User-specific configuration information, analogous to what's
 --   in ~/.gitconfig with Git.
@@ -221,5 +235,11 @@ data Branch = Branch {
     branchHash :: Hash,
     isCurrentBranch :: Bool
 } deriving (Eq, Show, Generic)
+
+makeNotCurrent :: Branch -> Branch
+makeNotCurrent b@(Branch name hash _) = Branch name hash False
+
+makeCurrent :: Branch -> Branch
+makeCurrent b@(Branch name hash _) = Branch name hash True
 
 instance Serialize Branch

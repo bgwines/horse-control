@@ -124,7 +124,7 @@ dropPrefix (a:as) (b:bs) =
 -- | Given a path to relativize and the user's directory (to which the
 --   first parameter should be relative), returns the first parameter
 --   made relative to the root of the repo.
-relativizePath :: FilePath -> FilePath -> EitherT Error IO FilePath
+relativizePath :: FilePath -> FilePath -> EIO FilePath
 relativizePath path userDirectory = do
     root <- repoRoot
     let userDirectoryRelativeToRoot = dropPrefix root userDirectory
@@ -133,7 +133,7 @@ relativizePath path userDirectory = do
 -- | If the current directory is a repo or a subdirectory of one,
 --   gets the ancestor that is a repo. If none are, returns an error
 --   state.
-repoRoot :: EitherT Error IO FilePath
+repoRoot :: EIO FilePath
 repoRoot = do
     ancestors <- liftIO $ D.getCurrentDirectory >>= filesystemAncestors
     repoAncestors <- liftIO $ takeWhileM isInRepository ancestors
@@ -178,7 +178,7 @@ collapse
     . Filesystem.Path.collapse
     . decodeString
 
-assertIsRepositoryAndCdToRoot :: EitherT Error IO ()
+assertIsRepositoryAndCdToRoot :: EIO ()
 assertIsRepositoryAndCdToRoot = do
     userDirectory <- liftIO D.getCurrentDirectory
     isRepository <- liftIO $ isInRepository userDirectory

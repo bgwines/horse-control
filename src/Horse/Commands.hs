@@ -1,5 +1,4 @@
 {-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Commands exposed through the CLI
@@ -50,7 +49,6 @@ import Data.Monoid
 import Control.Monad
 import Control.Applicative
 import Control.Monad.IO.Class
-import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 
 -- qualified imports
@@ -86,8 +84,6 @@ import Data.List
     , isPrefixOf
     , nub )
 
-import Data.Char (isDigit)
-
 import Data.Maybe (fromMaybe, isNothing, isJust, fromJust, catMaybes)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -95,8 +91,6 @@ import Data.Time.Calendar (toGregorian)
 
 import Filesystem.Path (parent, null)
 import Filesystem.Path.CurrentOS (decodeString, encodeString)
-
-import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 
 -- horse-control imports
 
@@ -109,14 +103,12 @@ import Horse.Utils
     , (</>)
     , whenM
     , unlessM
-    , hushT
     , toMaybe )
+import qualified Horse.Refs as HR
 import qualified Horse.IO as HIO
 import qualified Horse.Printing as HP
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
-
-type EIO a = EitherT Error IO a
 
 executeCommand :: EIO a -> EIO a
 executeCommand cmd = executeCommandPassingUserDirectory (const cmd)
@@ -138,7 +130,7 @@ createBranch branchName maybeRef printer = executeCommand (createBranch' branchN
 
 createBranch' :: String -> Maybe String -> Printer -> EIO Branch
 createBranch' branchName maybeRef (Printer _ putStrLn _ _ _) = do
-    hash <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
+    hash <- fromMaybe HIO.loadHeadHash (HR.refToHash <$> maybeRef)
 
     let newBranch = Branch branchName hash False
     HIO.loadAllBranches >>= liftIO . HIO.writeAllBranches . (:) newBranch
@@ -146,9 +138,6 @@ createBranch' branchName maybeRef (Printer _ putStrLn _ _ _) = do
     liftIO . putStrLn $ "Created branch \"" ++ branchName ++ "\", pointing to commit " ++ hashToString hash
 
     right newBranch
-    --where
-    --    makeNotCurrent :: Branch -> Branch
-    --    makeNotCurrent b@(Branch name hash _) = Branch name hash False
 
 deleteBranch :: String -> Printer -> EIO ()
 deleteBranch branchNameToDelete printer = executeCommand (deleteBranch' branchNameToDelete printer)
@@ -452,7 +441,7 @@ squash' :: CommitHasher -> String -> EIO Commit
 squash' hasher ref = do
     historyToRoot <- log Nothing Nothing quietPrinter
 
-    endHash <- refToHash ref
+    endHash <- HR.refToHash ref
     let squashedCommit = getSquashedCommit historyToRoot endHash
 
     HIO.writeCommit squashedCommit
@@ -491,7 +480,7 @@ checkout = executeCommand . checkout'
 --   specified commit.
 checkout' :: String -> EIO ()
 checkout' ref = do
-    hash <- refToHash ref
+    hash <- HR.refToHash ref
     checkoutToDirectory "." hash
     liftIO $ HIO.writeHeadHash hash
 
@@ -501,7 +490,8 @@ checkout' ref = do
     updatedBranches <- if isBranch
         then do
             branch <- loadBranchFromRef ref
-            otherBranches <- HIO.loadAllBranches >>= right . filter ((/=) ref . branchName)
+            allBranches <- HIO.loadAllBranches
+            let otherBranches = filter ((/=) ref . branchName) allBranches
             right (makeCurrent branch : map makeNotCurrent otherBranches)
         else map makeNotCurrent <$> HIO.loadAllBranches
     liftIO $ HIO.writeAllBranches updatedBranches
@@ -517,12 +507,6 @@ checkout' ref = do
                 . note ("Could not load branch from ref " ++ ref)
                 . find ((==) ref . branchName)
 
-        makeNotCurrent :: Branch -> Branch
-        makeNotCurrent b@(Branch name hash _) = Branch name hash False
-
-        makeCurrent :: Branch -> Branch
-        makeCurrent b@(Branch name hash _) = Branch name hash True
-
 -- | Prints information about the specified commit to the console. With
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
 show :: Maybe String -> Printer -> EIO Commit
@@ -532,7 +516,7 @@ show maybeRef printer = executeCommand (show' maybeRef printer)
 --   a `Nothing` for its parameter, it assumes a single argument of HEAD.
 show' :: Maybe String -> Printer -> EIO Commit
 show' maybeRef printer = do
-    ref <- fromMaybe HIO.loadHeadHash (refToHash <$> maybeRef)
+    ref <- fromMaybe HIO.loadHeadHash (HR.refToHash <$> maybeRef)
     commit <- HIO.loadCommit ref
     liftIO (HP.printCommit printer commit)
     right commit
@@ -554,9 +538,9 @@ log' maybeRef maybeNumCommits printer = do
     haveCommitsBeenMade <- commitsHaveBeenMade
     history <- if haveCommitsBeenMade
         then do
-            commitHash <- maybe HIO.loadHeadHash refToHash maybeRef
+            commitHash <- maybe HIO.loadHeadHash HR.refToHash maybeRef
             commit <- HIO.loadCommit commitHash
-            history <- (take <$> maybeNumCommits) |<$>| loadHistory commit
+            history <- (take <$> maybeNumCommits) |<$>| HIO.loadHistory commit
 
             headHash <- HIO.loadHeadHash
             HIO.loadAllBranches >>= liftIO . HP.printLog printer headHash history
@@ -608,7 +592,7 @@ checkoutToDirectory dir hash = do
     liftIO HF.assertCurrDirIsRepo
 
     liftIO clearDirectory
-    history <- HIO.loadCommit hash >>= loadHistory
+    history <- HIO.loadCommit hash >>= HIO.loadHistory
     let diffs = reverse . map diffWithPrimaryParent $ history
     let diffWithRoot = foldl' mappend mempty diffs
 
@@ -626,93 +610,6 @@ checkoutToDirectory dir hash = do
             if isFile
                 then D.removeFile path
                 else D.removeDirectoryRecursive path
-
--- | Loads the history from a given commit, all the way back
---   to the start. Returns in reverse order (latest commit at front).
-loadHistory :: Commit -> EIO [Commit]
-loadHistory commit = do
-    liftIO HF.assertCurrDirIsRepo
-    liftIO
-        . fmap ((:) commit)
-        . iterateMaybeM (runMaybeT . loadParent)
-        $ commit
-    where
-        -- | Attempts to load the parent commit for a given commit.
-        loadParent :: Commit -> MaybeT IO Commit
-        loadParent commit =
-            if isJust $ parentHash commit
-                then hushT
-                    . HIO.loadCommit
-                    . fromJust
-                    . parentHash
-                    $ commit
-                else MaybeT $ return Nothing
-
--- | Given any string, attempt to convert it to a hash.
---   Succeeds if the string is in a hash format, even if
---   the hash is not a key in the database (no commits / diffs
---   have been hashed with that key yet). Fails if the format
---   is unexpected. Acceptable formats are listed in user-facing
---   documentation.
-refToHash :: String -> EIO Hash
-refToHash unparsedRef = do
-    liftIO HF.assertCurrDirIsRepo
-
-    base <- case baseRef of
-        "HEAD" -> HIO.loadHeadHash
-        someHash -> untruncateBaseRef someHash
-    hoistEither (toAncestorDistance relatives) >>= applyRelatives base
-    where
-        parentSyntax :: Char
-        parentSyntax = '^'
-
-        ancestorSyntax :: Char
-        ancestorSyntax = '~'
-
-        -- throws exception if `read` fails
-        toAncestorDistance :: String -> Either Error Int
-        toAncestorDistance r
-            | Prelude.null r = Right 0
-            | all (parentSyntax ==) r = Right $ length r
-            | parentSyntax `elem` r =
-                Left $ "Fatal: cannot combine '" ++ [parentSyntax] ++ "' and '" ++ [ancestorSyntax] ++ "' syntax."
-            | all isDigit (tail r) = Right (read (tail r))
-            | otherwise = Left ("Fatal: unrecognized syntax: " ++ r)
-
-        applyRelatives :: Hash -> Int -> EIO Hash
-        applyRelatives h ancestorDistance = do
-                history <- HIO.loadCommit h >>= loadHistory
-                when (ancestorDistance >= length history) $
-                    left "Fatal: specified relative commit is too far back in history; no commits exist there."
-                right $ hash (history !! ancestorDistance)
-
-        baseRef :: String
-        baseRef = takeWhile (not . isRelativeSyntax) unparsedRef
-
-        relatives :: String
-        relatives = dropWhile (not . isRelativeSyntax) unparsedRef
-
-        isRelativeSyntax :: Char -> Bool
-        isRelativeSyntax ch
-            = (ch == parentSyntax) || (ch == ancestorSyntax)
-
-        untruncateBaseRef :: String -> EIO Hash
-        untruncateBaseRef baseRef = do
-            when (Prelude.null baseRef) $
-                left "Fatal: can't untruncate the empty hash."
-
-            allHashes <- HIO.loadAllHashes
-            let matchingHashes = filter ((==) baseRef . hashToString . BS.take (length baseRef)) allHashes
-
-            allBranches <- HIO.loadAllBranches
-            let matchingBranches = filter ((==) baseRef . branchName) allBranches
-
-            let matching = matchingHashes ++ map branchHash matchingBranches
-
-            case length matching of
-                0 -> left $ "Fatal: ref " ++ Prelude.show baseRef ++ " does not match any branch names or stored hashes"
-                1 -> right $ head matching
-                _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ Prelude.show matching
 
 -- * diffing
 

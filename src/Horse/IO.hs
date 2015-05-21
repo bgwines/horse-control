@@ -1,3 +1,4 @@
+{-# LANGUAGE PackageImports #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -- | Helper module for writing and reading data from disk.
@@ -28,6 +29,9 @@ module Horse.IO
 -- * branches
 , loadAllBranches
 , writeAllBranches
+
+-- * assorted
+, loadHistory
 ) where
 
 -- imports
@@ -37,6 +41,7 @@ import Prelude hiding (init, log, null)
 import Data.Monoid
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.Either
 import Control.Monad.IO.Class (liftIO, MonadIO(..))
 
@@ -62,6 +67,8 @@ import qualified Database.LevelDB.Internal as DBInternal
 
 import qualified Data.Text.Punycode as Punycode (encode)
 
+import "monad-extras" Control.Monad.Extra (iterateMaybeM)
+
 -- imported functions
 
 import Data.List (nub, (\\))
@@ -72,7 +79,7 @@ import Data.Time.Clock (getCurrentTime, utctDay)
 -- horse-control imports
 
 import Horse.Types
-import Horse.Utils (note)
+import Horse.Utils (note, hushT)
 import qualified Horse.Constants as HC
 import qualified Horse.Filesystem as HF
 
@@ -83,13 +90,13 @@ writeToFile filepath
     . Serialize.encode
 
 -- | Loads a serializable object from a file.
-loadFromFile :: (Serialize.Serialize a) => FilePath -> EitherT Error IO a
+loadFromFile :: (Serialize.Serialize a) => FilePath -> EIO a
 loadFromFile filepath = EitherT $ Serialize.decode <$> ByteString.readFile filepath
 
 -- * staging area
 
 -- | Loads the staging area from disk.
-loadStagingArea :: EitherT Error IO StagingArea
+loadStagingArea :: EIO StagingArea
 loadStagingArea = loadFromFile HC.stagingAreaPath
 
 -- | Writes the staging area to disk.
@@ -99,7 +106,7 @@ writeStagingArea = writeToFile HC.stagingAreaPath
 -- * HEAD
 
 -- | Loads hash of HEAD from disk.
-loadHeadHash :: EitherT Error IO Hash
+loadHeadHash :: EIO Hash
 loadHeadHash = loadFromFile HC.headHashPath
 
 -- | Writes HEAD's hash to disk.
@@ -112,7 +119,7 @@ writeHeadHash = writeToFile HC.headHashPath
 --   Returns a `Left` if the specified `Hash` doesn't reference a commit
 --   or if deserialization fails (which might happen if the database
 --   got corrupted).
-loadCommit :: Hash -> EitherT Error IO Commit
+loadCommit :: Hash -> EIO Commit
 loadCommit key = do
     maybeCommit <- liftIO $ do
         db <- DB.open HC.commitsPath Default.def
@@ -126,7 +133,7 @@ loadCommit key = do
         loadErrorMessage = "Could not fetch commit for key " ++ show key ++ "."
 
 -- | Writes the commit to the database, under the key of its hash.
-writeCommit :: Commit -> EitherT Error IO ()
+writeCommit :: Commit -> EIO ()
 writeCommit commit = do
     writeHash (hash commit)
     liftIO $ do
@@ -137,12 +144,12 @@ writeCommit commit = do
 -- * hashes
 
 -- | Loads the hashes of all commits ever made in the repo.
-loadAllHashes :: EitherT Error IO [Hash]
+loadAllHashes :: EIO [Hash]
 loadAllHashes = loadFromFile HC.hashesPath
 
 -- | Writes the specified hash to the list of hashes of every commit ever
 --   made in the repo.
-writeHash :: Hash -> EitherT Error IO ()
+writeHash :: Hash -> EIO ()
 writeHash hash
     = liftIO HF.assertCurrDirIsRepo
     >> loadAllHashes
@@ -154,7 +161,7 @@ writeHash hash
 --   Returns a `Left` if the specified `Hash` doesn't reference a commit
 --   or if deserialization fails (which might happen if the database
 --   got corrupted).
-loadConfig :: EitherT Error IO Config
+loadConfig :: EIO Config
 loadConfig
     = liftIO HF.assertCurrDirIsRepo
     >> liftIO HC.configPath
@@ -170,7 +177,7 @@ writeConfig config = do
 
 -- * untracking
 
-loadUntrackedPaths :: EitherT Error IO [FilePath]
+loadUntrackedPaths :: EIO [FilePath]
 loadUntrackedPaths = do
     liftIO HF.assertCurrDirIsRepo
     map ByteString8.unpack <$> loadFromFile HC.untrackedPathsPath
@@ -183,7 +190,7 @@ writeUntrackedPaths paths = do
         . map ByteString8.pack
         $ paths
 
-loadAllBranches :: EitherT Error IO [Branch]
+loadAllBranches :: EIO [Branch]
 loadAllBranches
     = liftIO HF.assertCurrDirIsRepo
     >> loadFromFile HC.branchesPath
@@ -193,14 +200,35 @@ writeAllBranches branches
     = liftIO HF.assertCurrDirIsRepo
     >> writeToFile HC.branchesPath branches
 
---writeBranch :: Branch -> EitherT Error IO ()
+--writeBranch :: Branch -> EIO ()
 --writeBranch branch
 --    = liftIO HF.assertCurrDirIsRepo
 --    >> loadAllBranches
 --    >>= liftIO . writeToFile HC.branchesPath . (:) branch
 
---removeStoredBranch :: Branch -> EitherT Error IO ()
+--removeStoredBranch :: Branch -> EIO ()
 --removeStoredBranch branch
 --    = liftIO HF.assertCurrDirIsRepo
 --    >> loadAllBranches
 --    >>= liftIO . writeToFile HC.branchesPath . (flip (\\) $ [branch])
+
+-- | Loads the history from a given commit, all the way back
+--   to the start. Returns in reverse order (latest commit at front).
+loadHistory :: Commit -> EIO [Commit]
+loadHistory commit = do
+    liftIO HF.assertCurrDirIsRepo
+    liftIO
+        . fmap ((:) commit)
+        . iterateMaybeM (runMaybeT . loadParent)
+        $ commit
+    where
+        -- | Attempts to load the parent commit for a given commit.
+        loadParent :: Commit -> MaybeT IO Commit
+        loadParent commit =
+            if hasParent commit
+                then hushT
+                    . loadCommit
+                    . fromJust
+                    . parentHash
+                    $ commit
+                else MaybeT $ return Nothing

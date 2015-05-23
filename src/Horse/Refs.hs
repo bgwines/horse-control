@@ -89,8 +89,7 @@ refToHash unparsedRef = do
                 _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ Prelude.show matching
 
 isBranchRef :: String -> EIO Bool
-isBranchRef ref =
-    HIO.loadAllBranches >>= right . any ((==) ref . branchName)
+isBranchRef ref = liftM (any ((==) ref . branchName)) HIO.loadAllBranches
 
 loadBranchFromRef :: String -> EIO Branch
 loadBranchFromRef ref =

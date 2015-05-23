@@ -173,7 +173,7 @@ testTakeWhileMEdgeCase3 = do
 
 testAssertCurrDirIsRepo :: Assertion
 testAssertCurrDirIsRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     -- throws exception if fails
     result <- H.assertCurrDirIsRepo
@@ -247,7 +247,7 @@ utilsTests = testGroup "unit tests (Horse.Utils)"
 
 testLoadBranchFromRefErrorCase :: Assertion
 testLoadBranchFromRefErrorCase = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     b <- runEitherT $ H.loadBranchFromRef "nonexistent"
     b @?= Left "Could not load branch from ref: nonexistent"
@@ -261,7 +261,7 @@ refsTests = testGroup "unit tests (Horse.Refs)"
 
 testLoadCommitErrorCase :: Assertion
 testLoadCommitErrorCase = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherCommit <- runEitherT $ H.loadCommit "xyz"
     eitherCommit @?= Left "Could not fetch commit for key \"xyz\"."
@@ -273,9 +273,12 @@ ioTests = testGroup "unit tests (Horse.IO)"
         (runTest testLoadCommitErrorCase)
     ]
 
+initRepo :: IO (Either String ())
+initRepo = runEitherT $ H.init quietPrinter
+
 testRelativeSyntaxErrorCase :: Assertion
 testRelativeSyntaxErrorCase = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -286,7 +289,7 @@ testRelativeSyntaxErrorCase = do
 
 testLogTooFarBackSyntax :: Assertion
 testLogTooFarBackSyntax = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -300,7 +303,7 @@ testLogTooFarBackSyntax = do
 
 testUndefinedAncestorSyntax :: Assertion
 testUndefinedAncestorSyntax = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -311,7 +314,7 @@ testUndefinedAncestorSyntax = do
 
 testLog :: Assertion
 testLog = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -339,7 +342,7 @@ testLog = do
 
 testLogEdgeCase1 :: Assertion
 testLogEdgeCase1 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         history <- reverse <$> H.log Nothing Nothing quietPrinter
 
@@ -351,7 +354,7 @@ testLogEdgeCase1 = do
 
 testLogEdgeCase2 :: Assertion
 testLogEdgeCase2 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -380,7 +383,7 @@ testLogEdgeCase2 = do
 
 testLogEdgeCase3 :: Assertion
 testLogEdgeCase3 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -412,7 +415,7 @@ testLogEdgeCase3 = do
 
 testLogEdgeCase4 :: Assertion
 testLogEdgeCase4 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         liftIO $ createFileWithContents "a" "a"
         H.stage "a"
@@ -438,7 +441,7 @@ testLogEdgeCase4 = do
 
 testStage :: Assertion
 testStage = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
 
@@ -452,7 +455,7 @@ testStage = do
 
 testStageDirectory :: Assertion
 testStageDirectory = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -473,7 +476,7 @@ testStageDirectory = do
 
 testStageDirectoryEdgeCase1 :: Assertion
 testStageDirectoryEdgeCase1 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -497,7 +500,7 @@ testStageDirectoryEdgeCase1 = do
 
 testStageDirectoryEdgeCase2 :: Assertion
 testStageDirectoryEdgeCase2 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -521,7 +524,7 @@ testStageDirectoryEdgeCase2 = do
 
 testStageDirectoryEdgeCase3 :: Assertion
 testStageDirectoryEdgeCase3 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "dir"
     D.createDirectory "dir/sd"
@@ -546,7 +549,7 @@ testStageDirectoryEdgeCase3 = do
 
 testStageDirectoryEdgeCase4 :: Assertion
 testStageDirectoryEdgeCase4 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
 
@@ -557,7 +560,7 @@ testStageDirectoryEdgeCase4 = do
 
 testStageDirectoryEdgeCase5 :: Assertion
 testStageDirectoryEdgeCase5 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
 
@@ -568,7 +571,7 @@ testStageDirectoryEdgeCase5 = do
 
 testStageDirectoryEdgeCase6 :: Assertion
 testStageDirectoryEdgeCase6 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "dir"
     createFileWithContents "a" "a"
@@ -580,7 +583,7 @@ testStageDirectoryEdgeCase6 = do
 
 testStageNonexistentFile :: Assertion
 testStageNonexistentFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -588,7 +591,7 @@ testStageNonexistentFile = do
 
 testStageNonexistentDirectory :: Assertion
 testStageNonexistentDirectory = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStagingArea <- runEitherT $ H.stage "xyz"
 
@@ -596,21 +599,21 @@ testStageNonexistentDirectory = do
 
 testStagePathOutsideOfRepo :: Assertion
 testStagePathOutsideOfRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStagingArea <- runEitherT $ H.stage "../a"
     eitherStagingArea @?= Left "Can't stage file or directory outside of the repository: ../a"
 
 testUnstagePathOutsideOfRepo :: Assertion
 testUnstagePathOutsideOfRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStagingArea <- runEitherT $ H.unstage "../a"
     eitherStagingArea @?= Left "Can't unstage file or directory outside of the repository: ../a"
 
 testStatusCase1 :: Assertion
 testStatusCase1 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStatus <- runEitherT $ H.status quietPrinter
 
@@ -619,7 +622,7 @@ testStatusCase1 = do
 
 testStatusCase2 :: Assertion
 testStatusCase2 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStatus <- runEitherT $ H.status quietPrinter
 
@@ -628,7 +631,7 @@ testStatusCase2 = do
 
 testStatusCase3 :: Assertion
 testStatusCase3 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     eitherStatus <- runEitherT $ H.status quietPrinter
@@ -642,7 +645,7 @@ testStatusCase3 = do
 
 testStatusCase4 :: Assertion
 testStatusCase4 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -669,7 +672,7 @@ testStatusCase4 = do
 
 testStatusCase5 :: Assertion
 testStatusCase5 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -686,24 +689,24 @@ testStatusCase5 = do
 
 testInit :: Assertion
 testInit = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     rootDirectoryCreated <- D.doesDirectoryExist H.repositoryDataDir
     rootDirectoryCreated @?= True
 
 testInitTwiceInSameDirectory :: Assertion
 testInitTwiceInSameDirectory = do
-    eitherInit1 <- runEitherT $ H.init quietPrinter
-    eitherInit2 <- runEitherT $ H.init quietPrinter
+    eitherInit1 <- initRepo
+    eitherInit2 <- initRepo
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
     assertBool "Fatal: command should fail" (isLeft eitherInit2)
 
 testInitAgainInSubdir :: Assertion
 testInitAgainInSubdir = do
-    eitherInit1 <- runEitherT $ H.init quietPrinter
+    eitherInit1 <- initRepo
     D.createDirectory "x"
     D.setCurrentDirectory "x"
-    eitherInit2 <- runEitherT $ H.init quietPrinter
+    eitherInit2 <- initRepo
 
     assertBool (fromLeft undefined eitherInit1) (isRight eitherInit1)
     eitherInit2 @?= Left "Fatal: directory is or is subdirectory of another horse-control repo"
@@ -758,12 +761,15 @@ testNoRepoBranchDelete = testNoRepo $ H.deleteBranch def quietPrinter
 testNoRepoBranchCreate :: Assertion
 testNoRepoBranchCreate = testNoRepo $ H.createBranch def Nothing quietPrinter
 
+testNoRepoCherryPick :: Assertion
+testNoRepoCherryPick = testNoRepo $ H.cherryPick def def quietPrinter
+
 --testNoRepoBranchSet :: Assertion
 --testNoRepoBranchSet = testNoRepo $ H.setBranch def def quietPrinter
 
 testCheckoutChangesHEAD :: Assertion
 testCheckoutChangesHEAD = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
@@ -783,7 +789,7 @@ testCheckoutChangesHEAD = do
 
 testCheckout :: Assertion
 testCheckout = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -864,7 +870,7 @@ quietCheckout ref = fromRight undefined <$> (runEitherT $ H.checkout ref)
 
 testStatusFromSubdir :: Assertion
 testStatusFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "a"
     D.createDirectory "a/b"
@@ -881,7 +887,7 @@ testStatusFromSubdir = do
 
 testStageFromSubdir :: Assertion
 testStageFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "a"
     createFileWithContents "a/x" "x"
@@ -899,7 +905,7 @@ testStageFromSubdir = do
 
 testCheckoutFromSubdir :: Assertion
 testCheckoutFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -982,7 +988,7 @@ testCheckoutFromSubdir = do
 
 testCommitFromSubdir :: Assertion
 testCommitFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1064,7 +1070,7 @@ testCommitFromSubdir = do
 
 testShowFromSubdir :: Assertion
 testShowFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1088,7 +1094,7 @@ testShowFromSubdir = do
 
 testShowNoArg :: Assertion
 testShowNoArg = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
@@ -1099,7 +1105,7 @@ testShowNoArg = do
 
 testLogFromSubdir :: Assertion
 testLogFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
     eitherSuccess <- runEitherT $ do
         liftIO $ D.createDirectory "dir"
         liftIO $ D.setCurrentDirectory "dir"
@@ -1131,7 +1137,7 @@ testLogFromSubdir = do
 
 testCommitAmend :: Assertion
 testCommitAmend = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1194,7 +1200,7 @@ testCommitAmend = do
 
 testCommitAmendNoPreviousCommits :: Assertion
 testCommitAmendNoPreviousCommits = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1206,7 +1212,7 @@ testCommitAmendNoPreviousCommits = do
 
 testCommitAmendFromSubdir :: Assertion
 testCommitAmendFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1272,7 +1278,7 @@ testCommitAmendFromSubdir = do
 
 testSquash :: Assertion
 testSquash = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1352,7 +1358,7 @@ testSquash = do
 
 testSquashFromSubdir :: Assertion
 testSquashFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1437,7 +1443,7 @@ testSquashFromSubdir = do
 
 testStageSameFileTwiceNoChanges :: Assertion
 testStageSameFileTwiceNoChanges = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1449,7 +1455,7 @@ testStageSameFileTwiceNoChanges = do
 
 testStageSameFileTwiceWithChanges :: Assertion
 testStageSameFileTwiceWithChanges = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1466,7 +1472,7 @@ testStageSameFileTwiceWithChanges = do
 
 testUnstage :: Assertion
 testUnstage = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1483,7 +1489,7 @@ testUnstage = do
 
 testUnstageUnstagedFile :: Assertion
 testUnstageUnstagedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     runEitherT $ H.stage "a"
     runEitherT $ H.unstage "a"
@@ -1493,7 +1499,7 @@ testUnstageUnstagedFile = do
 
 testUnstageNonexistentPath :: Assertion
 testUnstageNonexistentPath = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     runEitherT $ H.stage "a"
     runEitherT $ H.unstage "a"
@@ -1503,7 +1509,7 @@ testUnstageNonexistentPath = do
 
 testUnstageFromSubdir :: Assertion
 testUnstageFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "d"
     D.setCurrentDirectory "d"
@@ -1520,7 +1526,7 @@ testUnstageFromSubdir = do
 
 testUnstageDirectory :: Assertion
 testUnstageDirectory = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "d"
 
@@ -1536,7 +1542,7 @@ testUnstageDirectory = do
 
 testCommitNoStagedFiles :: Assertion
 testCommitNoStagedFiles = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1549,7 +1555,7 @@ testCommitNoStagedFiles = do
 
 testStageFileWithNoChanges :: Assertion
 testStageFileWithNoChanges = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
@@ -1566,7 +1572,7 @@ testStageFileWithNoChanges = do
 
 testCheckoutTruncatedHash :: Assertion
 testCheckoutTruncatedHash = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1644,7 +1650,7 @@ testCheckoutTruncatedHash = do
 
 testCheckoutBadTruncatedHash1 :: Assertion
 testCheckoutBadTruncatedHash1 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1658,7 +1664,7 @@ testCheckoutBadTruncatedHash1 = do
 
 testCheckoutBadTruncatedHash2 :: Assertion
 testCheckoutBadTruncatedHash2 = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -1685,7 +1691,7 @@ mockHasher2 = CommitHasher
 
 testCheckoutCollidingTruncatedHashes :: Assertion
 testCheckoutCollidingTruncatedHashes = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     runEitherT $ H.stage "a"
@@ -1701,7 +1707,7 @@ testCheckoutCollidingTruncatedHashes = do
 
 testCheckoutRelativeSyntaxCaret :: Assertion
 testCheckoutRelativeSyntaxCaret = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1780,7 +1786,7 @@ testCheckoutRelativeSyntaxCaret = do
 
 testCheckoutRelativeSyntaxTilde :: Assertion
 testCheckoutRelativeSyntaxTilde = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1859,7 +1865,7 @@ testCheckoutRelativeSyntaxTilde = do
 
 testCheckoutTruncatedRelativeSyntax :: Assertion
 testCheckoutTruncatedRelativeSyntax = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -1939,7 +1945,7 @@ testCheckoutTruncatedRelativeSyntax = do
 
 testCheckoutRelativeSyntaxTildeZero :: Assertion
 testCheckoutRelativeSyntaxTildeZero = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -2015,7 +2021,7 @@ testCheckoutRelativeSyntaxTildeZero = do
 
 testUntrack :: Assertion
 testUntrack = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
@@ -2027,7 +2033,7 @@ testUntrack = do
 
 testUntrackGivenDirectory :: Assertion
 testUntrackGivenDirectory = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2042,7 +2048,7 @@ testUntrackGivenDirectory = do
 
 testUntrackGivenDirectoryFromSubdir :: Assertion
 testUntrackGivenDirectoryFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2059,7 +2065,7 @@ testUntrackGivenDirectoryFromSubdir = do
 
 testRetrack :: Assertion
 testRetrack = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
@@ -2072,7 +2078,7 @@ testRetrack = do
 
 testRetrackGivenDirectory :: Assertion
 testRetrackGivenDirectory = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2088,7 +2094,7 @@ testRetrackGivenDirectory = do
 
 testRetrackGivenDirectoryFromSubdir :: Assertion
 testRetrackGivenDirectoryFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2106,7 +2112,7 @@ testRetrackGivenDirectoryFromSubdir = do
 
 testStagingUntrackedFile :: Assertion
 testStagingUntrackedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
     createFileWithContents "b" "1"
@@ -2119,7 +2125,7 @@ testStagingUntrackedFile = do
 
 testUntrackMultipleTimes :: Assertion
 testUntrackMultipleTimes = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     D.createDirectory "x"
     D.createDirectory "x/y"
@@ -2135,7 +2141,7 @@ testUntrackMultipleTimes = do
 
 testConfigFirstTime :: Assertion
 testConfigFirstTime = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2150,7 +2156,7 @@ testConfigFirstTime = do
 
 testConfigFirstTimeNoParams :: Assertion
 testConfigFirstTimeNoParams = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2165,7 +2171,7 @@ testConfigFirstTimeNoParams = do
 
 testConfigNotFirstTime :: Assertion
 testConfigNotFirstTime = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherPreviousConfig <- runEitherT $ H.config Nothing Nothing
     H.configPath >>= D.removeFile
@@ -2199,7 +2205,7 @@ testNoRepoConfig = do
 
 testUntrackPathOutsideOfRepo :: Assertion
 testUntrackPathOutsideOfRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherUnit <- runEitherT $ H.untrack "../a" quietPrinter
 
@@ -2207,7 +2213,7 @@ testUntrackPathOutsideOfRepo = do
 
 testUngnorePathOutsideOfRepo :: Assertion
 testUngnorePathOutsideOfRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherUnit <- runEitherT $ H.retrack "../a"
 
@@ -2215,7 +2221,7 @@ testUngnorePathOutsideOfRepo = do
 
 testRemovingUntrackedFile :: Assertion
 testRemovingUntrackedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -2230,7 +2236,7 @@ testRemovingUntrackedFile = do
 
 testStageCurrentDirectoryRemovedFile :: Assertion
 testStageCurrentDirectoryRemovedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -2248,7 +2254,7 @@ testStageCurrentDirectoryRemovedFile = do
 
 testRetrackingNeverUntrackedFile :: Assertion
 testRetrackingNeverUntrackedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     result <- runEitherT $ H.retrack "a"
@@ -2260,7 +2266,7 @@ testRetrackingNeverUntrackedFile = do
 
 testStagingHorseDir :: Assertion
 testStagingHorseDir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherStagingArea <- runEitherT $ H.stage ".horse"
     eitherStagingArea @?= Left "Fatal: cannot stage .horse; it is a directory required by horse-control."
@@ -2270,7 +2276,7 @@ testStagingHorseDir = do
 
 testUntrackingStagedFile :: Assertion
 testUntrackingStagedFile = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "a"
@@ -2281,7 +2287,7 @@ testUntrackingStagedFile = do
 
 testDiffFromSubdir :: Assertion
 testDiffFromSubdir = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2310,7 +2316,7 @@ testDiffFromSubdir = do
 
 testDiff :: Assertion
 testDiff = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2336,7 +2342,7 @@ testDiff = do
 
 testDiffNoCommitsHaveBeenMade :: Assertion
 testDiffNoCommitsHaveBeenMade = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
 
@@ -2346,7 +2352,7 @@ testDiffNoCommitsHaveBeenMade = do
 
 testBranchListNewRepo :: Assertion
 testBranchListNewRepo = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
 
@@ -2354,7 +2360,7 @@ testBranchListNewRepo = do
 
 testInitialCommitCreatesNewBranch :: Assertion
 testInitialCommitCreatesNewBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2369,7 +2375,7 @@ testInitialCommitCreatesNewBranch = do
 
 testCommitAdvancesCurrentBranch :: Assertion
 testCommitAdvancesCurrentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2385,9 +2391,33 @@ testCommitAdvancesCurrentBranch = do
 
     eitherBranches @?= Right [Branch "master" commitHash True]
 
+testCommitWhenDetached :: Assertion
+testCommitWhenDetached = do
+    initRepo
+
+    createFileWithContents "a" "a"
+    runEitherT $ H.stage "."
+    eitherCommit1 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit1) (isRight eitherCommit1)
+    let commit1 = fromRight undefined eitherCommit1
+
+    runEitherT $ H.checkout (H.hashToString . hash $ commit1)
+
+    createFileWithContents "b" "b"
+    runEitherT $ H.stage "."
+    eitherCommit2 <- runEitherT noargCommit
+    assertBool (fromLeft undefined eitherCommit2) (isRight eitherCommit2)
+    let commit2 = fromRight undefined eitherCommit2
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "master" (hash commit1) False]
+
+    eitherHistory <- runEitherT $ H.log Nothing Nothing quietPrinter
+    eitherHistory @?= Right [commit2, commit1]
+
 testBranchCreateCreatesNewBranch :: Assertion
 testBranchCreateCreatesNewBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2409,7 +2439,7 @@ testBranchCreateCreatesNewBranch = do
 
 testBranchCreateCreatesNewBranchFromRef :: Assertion
 testBranchCreateCreatesNewBranchFromRef = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2432,7 +2462,7 @@ testBranchCreateCreatesNewBranchFromRef = do
 
 testCannotDeleteCurrentBranch :: Assertion
 testCannotDeleteCurrentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2458,7 +2488,7 @@ testCannotDeleteCurrentBranch = do
 
 testCanDeleteNoncurrentBranch :: Assertion
 testCanDeleteNoncurrentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2482,7 +2512,7 @@ testCanDeleteNoncurrentBranch = do
 
 testDeleteNonexistentBranch :: Assertion
 testDeleteNonexistentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "a"
     runEitherT $ H.stage "."
@@ -2569,7 +2599,7 @@ testLogGivenBranchWithRelativeSyntax = do
 
 testCheckoutGivenBranch :: Assertion
 testCheckoutGivenBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -2647,7 +2677,7 @@ testCheckoutGivenBranch = do
 
 testCheckoutGivenBranchWithRelativeSyntax :: Assertion
 testCheckoutGivenBranchWithRelativeSyntax = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -2725,7 +2755,7 @@ testCheckoutGivenBranchWithRelativeSyntax = do
 
 testCheckoutChangesCurrentBranch :: Assertion
 testCheckoutChangesCurrentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     ----------------
 
@@ -2824,7 +2854,7 @@ testCheckoutChangesCurrentBranch = do
 
 testCheckoutDoesNotChangeCurrentBranch :: Assertion
 testCheckoutDoesNotChangeCurrentBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -2850,7 +2880,7 @@ testCheckoutDoesNotChangeCurrentBranch = do
 
 testCannotCreateSameBranchTwice :: Assertion
 testCannotCreateSameBranchTwice = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -2869,7 +2899,7 @@ testCannotCreateSameBranchTwice = do
 
 testCannotCreateDefaultBranch :: Assertion
 testCannotCreateDefaultBranch = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     createFileWithContents "a" "1"
 
@@ -2885,10 +2915,146 @@ testCannotCreateDefaultBranch = do
 
 testCannotCreateBranchWithNoCommits :: Assertion
 testCannotCreateBranchWithNoCommits = do
-    runEitherT $ H.init quietPrinter
+    initRepo
 
     b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
     b @?= Left "Fatal: cannot create branch when no commits have been made."
+
+testCherryPick :: Assertion
+testCherryPick = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.checkout "newbranch"
+
+    createFileWithContents "c" "1"
+    runEitherT $ H.stage "c"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight (error "c") eitherCommit3
+
+    eitherCommit <- runEitherT $ H.cherryPick "master" def quietPrinter
+    assertBool "cherry-pick should succeed" (isRight eitherCommit)
+    let commit = fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "newbranch" (hash commit) True, Branch "master" hash2 False]
+
+testCherryPickInvalidRef :: Assertion
+testCherryPickInvalidRef = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.checkout "newbranch"
+
+    createFileWithContents "c" "1"
+    runEitherT $ H.stage "c"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight (error "c") eitherCommit3
+
+    eitherCommit <- runEitherT $ H.cherryPick "invalidref" def quietPrinter
+    eitherCommit @?= Left "Fatal: ref \"invalidref\" does not match any branch names or stored hashes"
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "newbranch" hash3 True, Branch "master" hash2 False]
+
+testCherryPickFromSubdir :: Assertion
+testCherryPickFromSubdir = do
+    initRepo
+
+    D.createDirectory "dir"
+    D.setCurrentDirectory "dir"
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    b <- runEitherT $ H.createBranch "newbranch" Nothing quietPrinter
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.checkout "newbranch"
+
+    createFileWithContents "c" "1"
+    runEitherT $ H.stage "c"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight (error "c") eitherCommit3
+
+    eitherCommit <- runEitherT $ H.cherryPick "master" def quietPrinter
+    assertBool "cherry-pick should succeed" (isRight eitherCommit)
+    let commit = fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "newbranch" (hash commit) True, Branch "master" hash2 False]
+
+    D.setCurrentDirectory ".."
+
+testCherryPickWhenDetached :: Assertion
+testCherryPickWhenDetached = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    b <- runEitherT $ H.createBranch "snd-commit-ptr" Nothing quietPrinter
+    runEitherT $ H.checkout (H.hashToString hash1)
+
+    eitherCommit <- runEitherT $ H.cherryPick "snd-commit-ptr" def quietPrinter
+    assertBool "cherry-pick should succeed" (isRight eitherCommit)
+    let commit = fromRight undefined eitherCommit
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "snd-commit-ptr" hash2 False, Branch "master" hash2 False]
+
+-- cp invalid commit
+
+-- cp self
+
+-- logging when detached
 
 -- test delete GCs
 
@@ -2939,9 +3105,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing `branch create` run without a repo"
         (runTest testNoRepoBranchCreate)
-    --, testCase
-    --    "Testing `branch set` run without a repo"
-    --    (runTest testNoRepoBranchSet)
+    , testCase
+        "Testing `cherry-pick` run without a repo"
+        (runTest testNoRepoCherryPick)
     , testCase
         "Testing `horse init`"
         (runTest testInit)
@@ -3186,6 +3352,9 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing `commit` advances current branch"
         (runTest testCommitAdvancesCurrentBranch)
     , testCase
+        "Testing `commit` when detached"
+        (runTest testCommitWhenDetached)
+    , testCase
         "Testing `branch create` creates a new branch from HEAD"
         (runTest testBranchCreateCreatesNewBranch)
     , testCase
@@ -3233,6 +3402,18 @@ commandTests = testGroup "unit tests (Horse.Commands)"
     , testCase
         "Testing `branch create` without any commits"
         (runTest testCannotCreateBranchWithNoCommits)
+    , testCase
+        "Testing `cherry-pick`"
+        (runTest testCherryPick)
+    , testCase
+        "Testing `cherry-pick` given an invalid ref"
+        (runTest testCherryPickInvalidRef)
+    , testCase
+        "Testing `cherry-pick` from a subdirectory"
+        (runTest testCherryPickFromSubdir)
+    , testCase
+        "Testing `cherry-pick` when not on a branch"
+        (runTest testCherryPickWhenDetached)
     ]
 
 tests :: TestTree

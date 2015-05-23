@@ -43,6 +43,7 @@ Currently exposed commands and functionality
 * branch create
 * branch delete
 * branch list
+* cherry-pick
 
 ### additional ###
 

@@ -35,6 +35,7 @@ data Command
     | CreateBranch String (Maybe String) Types.Printer
     | DeleteBranch String                Types.Printer
     | ListBranches                       Types.Printer
+    | CherryPick String                  Types.Printer
     deriving (Show)
 
 quietOption :: Parser Types.Printer
@@ -147,6 +148,11 @@ parseBranch = subparser
         branchListHelpMessage :: String
         branchListHelpMessage = "List all branches"
 
+parseCherryPick :: Parser Command
+parseCherryPick = CherryPick
+    <$> argument str (metavar "REF" <> help "Ref to cherry-pick")
+    <*> quietOption
+
 parseCommand :: Parser Command
 parseCommand = subparser
     $  command "version"  (parseVersion  `withInfo` versionHelpMessage)
@@ -164,6 +170,7 @@ parseCommand = subparser
     <> command "retrack"  (parseRetrack  `withInfo` retrackHelpMessage)
     <> command "diff"     (parseDiff     `withInfo` diffHelpMessage)
     <> command "branch"   (parseBranch   `withInfo` branchHelpMessage)
+    <> command "cherry-pick" (parseCherryPick `withInfo` cherryPickHelpMessage)
         where
         initHelpMessage :: String
         initHelpMessage = "Initialize an empty repository"
@@ -210,6 +217,9 @@ parseCommand = subparser
         branchHelpMessage :: String
         branchHelpMessage = "Perform branch operations"
 
+        cherryPickHelpMessage :: String
+        cherryPickHelpMessage = "Copy a commit"
+
 withInfo :: Parser a -> String -> ParserInfo a
 withInfo opts desc = info (helper <*> opts) $ progDesc desc
 
@@ -217,7 +227,7 @@ withInfo opts desc = info (helper <*> opts) $ progDesc desc
 --     m - message
 --     p - printer
 --     r - ref
---dispatchCommand
+dispatchCommand :: Command -> IO (Either Types.Error ())
 dispatchCommand cmd = runEitherT $ case cmd of
     Version            -> liftIO . putStrLn $ "0.1.0.0"
     Init p             -> Commands.init                      p
@@ -236,6 +246,7 @@ dispatchCommand cmd = runEitherT $ case cmd of
     CreateBranch b r p -> void $ Commands.createBranch b r   p
     DeleteBranch b p   -> void $ Commands.deleteBranch b     p
     ListBranches p     -> void $ Commands.listBranches       p
+    CherryPick r p     -> void $ Commands.cherryPick r def   p
     Untrack _ True p   -> void $ Commands.listUntrackedPaths p
     Untrack (Just path) False p -> void $ Commands.untrack path p
 
@@ -243,7 +254,7 @@ run :: Command -> IO ()
 run cmd = do
     eitherSuccess <- dispatchCommand cmd
     when (isLeft eitherSuccess) $
-        putStrLn $ fromLeft def eitherSuccess
+        putStrLn (fromLeft def eitherSuccess)
 
 main :: IO ()
 main = run =<< execParser

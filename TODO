@@ -3,7 +3,6 @@ API
     * branches
         * cherry-pick
         * merging
-        * "current" branch
         * rebase
     * revert
     * networking
@@ -15,5 +14,5 @@ Code
     * in runTest, catch Assertion exceptions?
 
 UX
-    * performance
+    * more performance?
     * handle binary files / other file types (.png, etc.)

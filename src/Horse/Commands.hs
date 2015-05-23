@@ -34,8 +34,8 @@ module Horse.Commands
 , Horse.Commands.createBranch
 --, Horse.Commands.createBranchSetCurrent
 , Horse.Commands.deleteBranch
---, Horse.Commands.setBranch
 , Horse.Commands.listBranches
+, Horse.Commands.cherryPick
 ) where
 
 -- imports
@@ -171,6 +171,43 @@ listBranches' printer = do
     liftIO . HP.printBranches printer $ branches
     right branches
 
+cherryPick :: String -> CommitHasher -> Printer -> EIO Commit
+cherryPick ref hasher = executeCommand . cherryPick' ref hasher
+
+cherryPick' :: String -> CommitHasher -> Printer -> EIO Commit
+cherryPick' ref hasher printer = do
+    commitToPick <- HR.refToHash ref >>= HIO.loadCommit
+
+    -- TODO: verify diff can be applied
+
+    now <- liftIO $ fmap (toGregorian . utctDay) getCurrentTime
+    headHash <- HIO.loadHeadHash
+    let hashlessCommit = Commit {
+        author                  = author commitToPick 
+        , date                  = now
+        , hash                  = Default.def
+        , parentHash            = Just headHash
+        , diffWithPrimaryParent = diffWithPrimaryParent commitToPick
+        , message               = message commitToPick }
+
+    let commitHash = hashingAlg hasher hashlessCommit
+    let completeCommit = hashlessCommit { hash = commitHash }
+
+    branches <- HIO.loadAllBranches
+    let maybeCurrentBranch = find isCurrentBranch branches
+    when (isJust maybeCurrentBranch) $ do
+        let currentBranch = fromJust maybeCurrentBranch
+        let updatedBranch = currentBranch { branchHash = commitHash }
+        let updatedBranches = updatedBranch : filter (not . isCurrentBranch) branches
+        liftIO $ HIO.writeAllBranches updatedBranches
+
+    HIO.writeCommit completeCommit
+    liftIO $ do
+        HIO.writeHeadHash commitHash
+        HP.printCommitStats printer completeCommit
+
+    right completeCommit
+
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
 config :: Maybe String -> Maybe EmailAddress -> EIO Config
@@ -244,10 +281,9 @@ status' printer = do
         loadUnstagedFiles = do
             stagedFiles <- files <$> HIO.loadStagingArea
             untrackedPaths <- HIO.loadUntrackedPaths
-            diffWithHEADAllFiles
-                >>= right
-                . sort
-                . getUnstagedFilesFromDiff (stagedFiles ++ untrackedPaths)
+            let filesToIgnore = stagedFiles ++ untrackedPaths
+            liftM (sort . getUnstagedFilesFromDiff filesToIgnore)
+                diffWithHEADAllFiles
 
         getUnstagedFilesFromDiff :: [FilePath] -> FD.Diff -> [FilePath]
         getUnstagedFilesFromDiff stagedOrUntrackedFiles
@@ -424,15 +460,16 @@ commit' hasher maybeMessage printer = do
 
     branches <- HIO.loadAllBranches
     let maybeCurrentBranch = find isCurrentBranch branches
-    let currentBranch = maybe (Branch HC.defaultBranchName commitHash True) (\b -> b  { branchHash = commitHash }) maybeCurrentBranch
-    let updatedBranches = currentBranch : filter (not . isCurrentBranch) branches
-    liftIO $ HIO.writeAllBranches updatedBranches
+    let shouldUpdateABranch = isFirstCommit || isJust maybeCurrentBranch
+    when shouldUpdateABranch $ do
+        let currentBranch = maybe (Branch HC.defaultBranchName commitHash True) (\b -> b  { branchHash = commitHash }) maybeCurrentBranch
+        let updatedBranches = currentBranch : filter (not . isCurrentBranch) branches
+        liftIO $ HIO.writeAllBranches updatedBranches
 
     HIO.writeCommit completeCommit
     liftIO $ do
         HIO.writeHeadHash commitHash
         HIO.writeStagingArea (Default.def :: StagingArea)
-        HP.printCommit printer completeCommit
         HP.printCommitStats printer completeCommit
 
     right completeCommit

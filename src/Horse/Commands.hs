@@ -622,7 +622,7 @@ checkoutToDirectory dir hash = do
     let diffs = reverse . map diffWithPrimaryParent $ history
     let diffWithRoot = foldl' mappend mempty diffs
 
-    liftIO $ FD.applyToDirectory diffWithRoot dir
+    void (FD.applyDirectoryDiff diffWithRoot dir)
     where
         clearDirectory :: IO ()
         clearDirectory = do

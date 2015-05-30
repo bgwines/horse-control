@@ -36,6 +36,7 @@ module Horse.Commands
 , Horse.Commands.deleteBranch
 , Horse.Commands.listBranches
 , Horse.Commands.cherryPick
+, Horse.Commands.fastForward
 ) where
 
 -- imports
@@ -207,6 +208,14 @@ cherryPick' ref hasher printer = do
         HP.printCommitStats printer completeCommit
 
     right completeCommit
+
+fastForward :: String -> EIO ()
+fastForward = executeCommand . fastForward'
+
+fastForward' :: String -> EIO ()
+fastForward' branchName = do
+    unlessM (HR.isBranchRef branchName)
+        (left ("Fatal: isn't a branch name: " ++ branchName))
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.

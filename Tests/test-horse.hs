@@ -3050,16 +3050,8 @@ testCherryPickWhenDetached = do
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "snd-commit-ptr" hash2 False, Branch "master" hash2 False]
 
--- cp invalid commit
-
--- cp self
-
--- logging when detached
-
--- test delete GCs
-
-commandTests :: TestTree
-commandTests = testGroup "unit tests (Horse.Commands)"
+allCommandTests :: TestTree
+allCommandTests = testGroup "unit tests (Horse.Commands)"
     [ testCase
         "Testing `status` run without a repo"
         (runTest testNoRepoStatus)
@@ -3136,45 +3128,6 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing `horse log` (edge case 5)"
         (runTest testLogTooFarBackSyntax)
     , testCase
-        "Testing `stage`"
-        (runTest testStage)
-    , testCase
-        "Testing `stage` (edge case 1)"
-        (runTest testStagePathOutsideOfRepo)
-    , testCase
-        "Testing `stage` (edge case 1)"
-        (runTest testStageNonexistentFile)
-    , testCase
-        "Testing `stage` (edge case 2)"
-        (runTest testStageNonexistentDirectory)
-    , testCase
-        "Testing `stage` (edge case 3)."
-        (runTest testStageCurrentDirectoryRemovedFile)
-    , testCase
-        "Testing `stage` when given a directory"
-        (runTest testStageDirectory)
-    , testCase
-        "Testing `stage` when given a directory (edge case 1)"
-        (runTest testStageDirectoryEdgeCase1)
-    , testCase
-        "Testing `stage` when given a directory (edge case 2)"
-        (runTest testStageDirectoryEdgeCase2)
-    , testCase
-        "Testing `stage` when given a directory (edge case 3)"
-        (runTest testStageDirectoryEdgeCase3)
-    , testCase
-        "Testing `stage` when given a directory (edge case 4)"
-        (runTest testStageDirectoryEdgeCase4)
-    , testCase
-        "Testing `stage` when given a directory (edge case 5)"
-        (runTest testStageDirectoryEdgeCase5)
-    , testCase
-        "Testing `stage` when given a directory (edge case 6)"
-        (runTest testStageDirectoryEdgeCase6)
-    , testCase
-        "Testing `stage` when given a directory (edge case 7)."
-        (runTest testStagingHorseDir)
-    , testCase
         "Testing `status` (case 1)"
         (runTest testStatusCase1)
     , testCase
@@ -3229,12 +3182,69 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing executing command `squash` from a subdirectory"
         (runTest testSquashFromSubdir)
     , testCase
+        "Testing committing with no staged files"
+        (runTest testCommitNoStagedFiles)
+    , testCase
+        "Testing `show` given no arguments"
+        (runTest testShowNoArg)
+    , testCase
+        "Testing failure of combining ^ and ~ syntax"
+        (runTest testRelativeSyntaxErrorCase) ]
+
+stageTests :: TestTree
+stageTests = testGroup "stage tests"
+    [ testCase
+        "Testing `stage`"
+        (runTest testStage)
+    , testCase
+        "Testing `stage` (edge case 1)"
+        (runTest testStagePathOutsideOfRepo)
+    , testCase
+        "Testing `stage` (edge case 1)"
+        (runTest testStageNonexistentFile)
+    , testCase
+        "Testing `stage` (edge case 2)"
+        (runTest testStageNonexistentDirectory)
+    , testCase
+        "Testing `stage` (edge case 3)."
+        (runTest testStageCurrentDirectoryRemovedFile)
+    , testCase
+        "Testing `stage` when given a directory"
+        (runTest testStageDirectory)
+    , testCase
+        "Testing `stage` when given a directory (edge case 1)"
+        (runTest testStageDirectoryEdgeCase1)
+    , testCase
+        "Testing `stage` when given a directory (edge case 2)"
+        (runTest testStageDirectoryEdgeCase2)
+    , testCase
+        "Testing `stage` when given a directory (edge case 3)"
+        (runTest testStageDirectoryEdgeCase3)
+    , testCase
+        "Testing `stage` when given a directory (edge case 4)"
+        (runTest testStageDirectoryEdgeCase4)
+    , testCase
+        "Testing `stage` when given a directory (edge case 5)"
+        (runTest testStageDirectoryEdgeCase5)
+    , testCase
+        "Testing `stage` when given a directory (edge case 6)"
+        (runTest testStageDirectoryEdgeCase6)
+    , testCase
+        "Testing `stage` when given a directory (edge case 7)."
+        (runTest testStagingHorseDir)
+    , testCase
         "Testing staging same file twice with no changes in between"
         (runTest testStageSameFileTwiceNoChanges)
     , testCase
         "Testing staging same file twice with changes in between"
         (runTest testStageSameFileTwiceWithChanges)
     , testCase
+        "Testing staging a file with no changes"
+        (runTest testStageFileWithNoChanges) ]
+
+unstageTests :: TestTree
+unstageTests = testGroup "unstage tests"
+    [ testCase
         "Testing `unstage`"
         (runTest testUnstage)
     , testCase
@@ -3248,14 +3258,11 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         (runTest testUnstagePathOutsideOfRepo)
     , testCase
         "Testing `unstage` when given a directory"
-        (runTest testUnstageDirectory)
-    , testCase
-        "Testing committing with no staged files"
-        (runTest testCommitNoStagedFiles)
-    , testCase
-        "Testing staging a file with no changes"
-        (runTest testStageFileWithNoChanges)
-    , testCase
+        (runTest testUnstageDirectory) ]
+
+checkoutTests :: TestTree
+checkoutTests = testGroup "checkout tests"
+    [ testCase
         "Testing `checkout` changes HEAD"
         (runTest testCheckoutChangesHEAD)
     , testCase
@@ -3281,8 +3288,23 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         (runTest testCheckoutTruncatedRelativeSyntax)
     , testCase
         "Testing `checkout` given relative hash (edge case 1)"
-        (runTest testCheckoutRelativeSyntaxTildeZero)
+        (runTest testCheckoutRelativeSyntaxTildeZero) ]
+
+configTests :: TestTree
+configTests = testGroup "config tests"
+    [ testCase
+        "Testing `config` (no previously existing config file)"
+        (runTest testConfigFirstTime)
     , testCase
+        "Testing `config` (previously existing config file)"
+        (runTest testConfigNotFirstTime)
+    , testCase
+        "Testing `config` (first time, no params supplied)"
+        (runTest testConfigFirstTimeNoParams) ]
+
+trackingTests :: TestTree
+trackingTests = testGroup "tracking/untracking tests"
+    [ testCase
         "Testing `untrack`"
         (runTest testUntrack)
     , testCase
@@ -3298,6 +3320,15 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing `untrack` by untracking a file and then staging it"
         (runTest testStagingUntrackedFile)
     , testCase
+        "Testing `untrack` given a path outside of the repo"
+        (runTest testUntrackPathOutsideOfRepo)
+    , testCase
+        "Testing `untrack` when removing a file."
+        (runTest testRemovingUntrackedFile)
+    , testCase
+        "Testing `untrack` when given a staged file."
+        (runTest testUntrackingStagedFile)
+    , testCase
         "Testing `retrack`"
         (runTest testRetrack)
     , testCase
@@ -3307,36 +3338,15 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         "Testing `retrack` from a subdirectory"
         (runTest testRetrackGivenDirectoryFromSubdir)
     , testCase
-        "Testing `config` (no previously existing config file)"
-        (runTest testConfigFirstTime)
-    , testCase
-        "Testing `config` (previously existing config file)"
-        (runTest testConfigNotFirstTime)
-    , testCase
-        "Testing `config` (first time, no params supplied)"
-        (runTest testConfigFirstTimeNoParams)
-    , testCase
-        "Testing `untrack` given a path outside of the repo"
-        (runTest testUntrackPathOutsideOfRepo)
-    , testCase
         "Testing `retrack` given a path outside of the repo"
         (runTest testUngnorePathOutsideOfRepo)
     , testCase
-        "Testing `show` given no arguments"
-        (runTest testShowNoArg)
-    , testCase
-        "Testing failure of combining ^ and ~ syntax"
-        (runTest testRelativeSyntaxErrorCase)
-    , testCase
-        "Testing `untrack` when removing a file."
-        (runTest testRemovingUntrackedFile)
-    , testCase
         "Testing `retrack` when given a never-untracked file."
-        (runTest testRetrackingNeverUntrackedFile)
-    , testCase
-        "Testing `untrack` when given a staged file."
-        (runTest testUntrackingStagedFile)
-    , testCase
+        (runTest testRetrackingNeverUntrackedFile) ]
+
+diffTests :: TestTree
+diffTests = testGroup "diff tests"
+    [ testCase
         "Testing `diff`"
         (runTest testDiff)
     , testCase
@@ -3344,8 +3354,11 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         (runTest testDiffFromSubdir)
     , testCase
         "Testing `diff` run without any commits made"
-        (runTest testDiffNoCommitsHaveBeenMade)
-    , testCase
+        (runTest testDiffNoCommitsHaveBeenMade) ]
+
+branchTests :: TestTree
+branchTests = testGroup "branch tests"
+    [ testCase
         "Testing `branch list` run after the first commit"
         (runTest testInitialCommitCreatesNewBranch)
     , testCase
@@ -3401,8 +3414,11 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         (runTest testCannotCreateDefaultBranch)
     , testCase
         "Testing `branch create` without any commits"
-        (runTest testCannotCreateBranchWithNoCommits)
-    , testCase
+        (runTest testCannotCreateBranchWithNoCommits) ]
+
+cherryPickTests :: TestTree
+cherryPickTests = testGroup "cherry-pick tests"
+    [ testCase
         "Testing `cherry-pick`"
         (runTest testCherryPick)
     , testCase
@@ -3413,11 +3429,67 @@ commandTests = testGroup "unit tests (Horse.Commands)"
         (runTest testCherryPickFromSubdir)
     , testCase
         "Testing `cherry-pick` when not on a branch"
-        (runTest testCherryPickWhenDetached)
-    ]
+        (runTest testCherryPickWhenDetached) ]
+
+fastForwardTests :: TestTree
+fastForwardTests = testGroup "fast-forward tests" []
+    --[ testCase
+    --    "Testing `fast-forward`"
+    --    (runTest testFastForward)
+    --, testCase
+    --    "Testing `fast-forward` run without a repository"
+    --    (runTest testNoRepoFastForward)
+    --, testCase
+    --    "Testing `fast-forward` from a subdirectory"
+    --    (runTest testFastForwardFromSubdir)
+    --, testCase
+    --    "Testing `fast-forward` when no commits have been made"
+    --    (runTest testFastForwardNoCommitsHaveBeenMade)
+    --, testCase
+    --    "Testing `fast-forward` with self"
+    --    (runTest testFastForwardWithSelf)
+    --, testCase
+    --    "Testing `fast-forward` when the other branch dosen't exist"
+    --    (runTest testFastForwardOtherBranchDoesNotExist)
+    --, testCase
+    --    "Testing `fast-forward` with conflicts"
+    --    (runTest testFastForwardWithConflicts)
+    --, testCase
+    --    "Testing `fast-forward`"
+    --    (runTest testFastForward)
+    --, testCase
+    --    "Testing `fast-forward`"
+    --    (runTest testFastForward)
+    --, testCase
+    --    "Testing `fast-forward`"
+    --    (runTest testFastForward)
+    --]
+
+commandTests :: TestTree
+commandTests = testGroup "command unit tests (Horse.Commands)"
+    [ allCommandTests
+    , configTests
+    , checkoutTests
+    , unstageTests
+    , stageTests
+    , trackingTests
+    , diffTests
+    , branchTests
+    , cherryPickTests
+    , fastForwardTests ]
+
+-- cp invalid commit
+
+-- cp self
+
+-- logging when detached
+
+-- test delete GCs
+
+-- all ffs but for merges
 
 tests :: TestTree
-tests = testGroup "All tests" [commandTests, filesystemTests, ioTests, utilsTests, refsTests]
+tests = testGroup "All tests" [filesystemTests, ioTests, utilsTests, refsTests, commandTests]
 
 main :: IO ()
 main = defaultMain tests

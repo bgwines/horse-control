@@ -194,13 +194,7 @@ cherryPick' ref hasher printer = do
     let commitHash = hashingAlg hasher hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
-    branches <- HIO.loadAllBranches
-    let maybeCurrentBranch = find isCurrentBranch branches
-    when (isJust maybeCurrentBranch) $ do
-        let currentBranch = fromJust maybeCurrentBranch
-        let updatedBranch = currentBranch { branchHash = commitHash }
-        let updatedBranches = updatedBranch : filter (not . isCurrentBranch) branches
-        liftIO $ HIO.writeAllBranches updatedBranches
+    HIO.updateCurrentBranch (\b -> b { branchHash = commitHash })
 
     HIO.writeCommit completeCommit
     liftIO $ do
@@ -209,13 +203,26 @@ cherryPick' ref hasher printer = do
 
     right completeCommit
 
+-- TODO: can be any ref
+-- | param is branch to which to ff
 fastForward :: String -> EIO ()
 fastForward = executeCommand . fastForward'
 
+-- TODO: can be any ref
+-- | param is branch to which to ff
 fastForward' :: String -> EIO ()
 fastForward' branchName = do
     unlessM (HR.isBranchRef branchName)
         (left ("Fatal: isn't a branch name: " ++ branchName))
+
+    -- can't fail since yeah TODO comment this when not lazy
+    maybeCurrentBranch <- HIO.loadCurrentBranch
+
+    when (isNothing maybeCurrentBranch)
+        (left "Fatal: can't fast-forward when you don't have a branch checked out.")
+    let currentBranch = fromJust maybeCurrentBranch
+
+    right ()
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.

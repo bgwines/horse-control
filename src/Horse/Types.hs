@@ -234,7 +234,7 @@ data Branch = Branch {
     branchName :: String,
     branchHash :: Hash,
     isCurrentBranch :: Bool
-} deriving (Eq, Show, Generic)
+} deriving (Eq, Ord, Show, Generic)
 
 makeNotCurrent :: Branch -> Branch
 makeNotCurrent b@(Branch name hash _) = Branch name hash False

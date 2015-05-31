@@ -3062,9 +3062,6 @@ testFastForwardOtherBranchDoesNotExist = do
     eitherCommit1 <- runEitherT noargCommit
     let hash1 = hash $ fromRight (error "a") eitherCommit1
 
-    D.removeFile "a" >> createFileWithContents "a" "2"
-    createFileWithContents "b" "2"
-
     result <- runEitherT $ H.fastForward "nonexistent-branch"
     result @?= Left "Fatal: isn't a branch name: nonexistent-branch"
 
@@ -3082,6 +3079,37 @@ testFastForwardNoCommitsHaveBeenMade = do
 
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= eitherBranchesBeforeFF
+
+testFastForward :: Assertion
+testFastForward = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    b <- runEitherT $ H.createBranch "ahead-branch" Nothing quietPrinter
+    runEitherT $ H.checkout "ahead-branch"
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "ahead-branch" hash2 True, Branch "master" hash1 False]
+
+    runEitherT $ H.checkout "master"
+    result <- runEitherT $ H.fastForward "ahead-branch"
+    assertBool "fast-forward should succeed" (isRight result)
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right [Branch "ahead-branch" hash2 False, Branch "master" hash2 True]
+
 
 fastForwardTests :: TestTree
 fastForwardTests = testGroup "fast-forward tests"
@@ -3107,10 +3135,10 @@ fastForwardTests = testGroup "fast-forward tests"
     --    "`fast-forward` with conflicts"
     --    (runTest testFastForwardWithConflicts)
     --, testCase
-    --    "`fast-forward`"
-    --    (runTest testFastForward)
+    --    "`fast-forward` when not an ancestor of the other branch"
+    --    (runTest testFastForwardWhenNotAncestor)
     --, testCase
-    --    "`fast-forward`"
+    --    "`fast-forward` when no branch is current"
     --    (runTest testFastForward)
     --, testCase
     --    "`fast-forward`"

@@ -92,8 +92,8 @@ isBranchRef :: String -> EIO Bool
 isBranchRef ref = liftM (any ((==) ref . branchName)) HIO.loadAllBranches
 
 loadBranchFromRef :: String -> EIO Branch
-loadBranchFromRef ref =
-    HIO.loadAllBranches
+loadBranchFromRef ref
+    = HIO.loadAllBranches
     >>= hoistEither
         . note ("Could not load branch from ref: " ++ ref)
         . find ((==) ref . branchName)

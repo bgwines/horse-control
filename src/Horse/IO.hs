@@ -29,6 +29,8 @@ module Horse.IO
 -- * branches
 , loadAllBranches
 , writeAllBranches
+, loadCurrentBranch
+, updateCurrentBranch
 
 -- * assorted
 , loadHistory
@@ -72,7 +74,7 @@ import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 
 -- imported functions
 
-import Data.List (nub, (\\))
+import Data.List (nub, (\\), find, partition)
 import Data.Maybe (isJust, fromJust)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
@@ -200,6 +202,17 @@ writeAllBranches :: [Branch] -> IO ()
 writeAllBranches branches
     = liftIO HF.assertCurrDirIsRepo
     >> writeToFile HC.branchesPath branches
+
+loadCurrentBranch :: EIO (Maybe Branch)
+loadCurrentBranch = liftM (find isCurrentBranch) loadAllBranches
+
+-- | If no current branch, does nothing.
+updateCurrentBranch :: (Branch -> Branch) -> EIO ()
+updateCurrentBranch f = do
+    (curr, rest) <- liftM (partition isCurrentBranch) loadAllBranches
+    when (length curr > 1)
+        (left "Error: more than one branch is current. Aborting.")
+    liftIO . writeAllBranches $ (map f curr) ++ rest
 
 --writeBranch :: Branch -> EIO ()
 --writeBranch branch

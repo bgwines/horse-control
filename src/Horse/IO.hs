@@ -30,7 +30,7 @@ module Horse.IO
 , loadAllBranches
 , writeAllBranches
 , loadCurrentBranch
-, updateCurrentBranch
+, updateCurrentBranchIfExists
 
 -- * assorted
 , loadHistory
@@ -75,7 +75,7 @@ import "monad-extras" Control.Monad.Extra (iterateMaybeM)
 -- imported functions
 
 import Data.List (nub, (\\), find, partition)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, catMaybes)
 
 import Data.Time.Clock (getCurrentTime, utctDay)
 
@@ -94,7 +94,7 @@ writeToFile filepath
 
 -- | Loads a serializable object from a file.
 loadFromFile :: (Serialize.Serialize a) => FilePath -> EIO a
-loadFromFile filepath = EitherT $ Serialize.decode <$> ByteString.readFile filepath
+loadFromFile filepath = EitherT (Serialize.decode <$> ByteString.readFile filepath)
 
 -- * staging area
 
@@ -129,8 +129,7 @@ loadCommit key = do
         maybeCommit <- DB.get db Default.def key
         DBInternal.unsafeClose db
         return maybeCommit
-    commit <- hoistEither $ note loadErrorMessage maybeCommit
-    hoistEither $ Serialize.decode commit
+    hoistEither $ note loadErrorMessage maybeCommit >>= Serialize.decode
     where
         loadErrorMessage :: String
         loadErrorMessage = "Could not fetch commit for key " ++ show key ++ "."
@@ -155,8 +154,7 @@ loadAllHashes = loadFromFile HC.hashesPath
 writeHash :: Hash -> EIO ()
 writeHash hash
     = liftIO HF.assertCurrDirIsRepo
-    >> loadAllHashes
-    >>= liftIO . writeToFile HC.hashesPath . (:) hash
+    >> loadAllHashes >>= liftIO . writeToFile HC.hashesPath . (:) hash
 
 -- * config
 
@@ -167,8 +165,7 @@ writeHash hash
 loadConfig :: EIO Config
 loadConfig
     = liftIO HF.assertCurrDirIsRepo
-    >> liftIO HC.configPath
-    >>= loadFromFile
+    >> liftIO HC.configPath >>= loadFromFile
 
 -- | Writes the object representing user-specified configuration to disk.
 writeConfig :: Config -> IO ()
@@ -204,15 +201,19 @@ writeAllBranches branches
     >> writeToFile HC.branchesPath branches
 
 loadCurrentBranch :: EIO (Maybe Branch)
-loadCurrentBranch = liftM (find isCurrentBranch) loadAllBranches
+loadCurrentBranch = do
+    current <- liftM (filter isCurrentBranch) loadAllBranches
+    when (length current > 1)
+        (left "Error: more than one branch is current. Aborting.")
+    right . find (const True) $ current
 
 -- | If no current branch, does nothing.
-updateCurrentBranch :: (Branch -> Branch) -> EIO ()
-updateCurrentBranch f = do
-    (curr, rest) <- liftM (partition isCurrentBranch) loadAllBranches
-    when (length curr > 1)
+updateCurrentBranchIfExists :: (Branch -> Branch) -> EIO ()
+updateCurrentBranchIfExists f = do
+    (current, other) <- liftM (partition isCurrentBranch) loadAllBranches
+    when (length current > 1)
         (left "Error: more than one branch is current. Aborting.")
-    liftIO . writeAllBranches $ (map f curr) ++ rest
+    liftIO . writeAllBranches $ map f current ++ other
 
 --writeBranch :: Branch -> EIO ()
 --writeBranch branch

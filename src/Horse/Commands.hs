@@ -194,7 +194,8 @@ cherryPick' ref hasher printer = do
     let commitHash = hashingAlg hasher hashlessCommit
     let completeCommit = hashlessCommit { hash = commitHash }
 
-    HIO.updateCurrentBranch (\b -> b { branchHash = commitHash })
+-- TODO: cleaner
+    HIO.updateCurrentBranchIfExists (\b -> b { branchHash = commitHash })
 
     HIO.writeCommit completeCommit
     liftIO $ do
@@ -208,21 +209,18 @@ cherryPick' ref hasher printer = do
 fastForward :: String -> EIO ()
 fastForward = executeCommand . fastForward'
 
--- TODO: can be any ref
--- | param is branch to which to ff
+-- | param is ref to which to ff
 fastForward' :: String -> EIO ()
-fastForward' branchName = do
-    unlessM (HR.isBranchRef branchName)
-        (left ("Fatal: isn't a branch name: " ++ branchName))
-
-    -- can't fail since yeah TODO comment this when not lazy
-    maybeCurrentBranch <- HIO.loadCurrentBranch
-
-    when (isNothing maybeCurrentBranch)
+fastForward' ref = do
+    whenM (isNothing <$> HIO.loadCurrentBranch)
         (left "Fatal: can't fast-forward when you don't have a branch checked out.")
-    let currentBranch = fromJust maybeCurrentBranch
 
-    right ()
+    hash <- HR.refToHash ref
+    unlessM (HIO.loadHeadHash >>= flip isAncestor hash)
+        (left ("Fatal: can only fast-forward when HEAD is an ancestor of " ++ ref))
+
+    -- TODO: cleaner -- try lenses?
+    HR.refToHash ref >>= (\h -> HIO.updateCurrentBranchIfExists (\b -> b {branchHash = h}))
 
 -- | Sets user-specific configuration information. The `Maybe String`
 --   refers to the user's name.
@@ -452,7 +450,7 @@ commit' hasher maybeMessage printer = do
     isFirstCommit <- (==) Default.def <$> HIO.loadHeadHash
     parent <- if isFirstCommit
         then right Nothing
-        else HIO.loadHeadHash >>= (fmap Just . HIO.loadCommit)
+        else HIO.loadHeadHash >>= (liftM Just . HIO.loadCommit)
 
     stagingArea <- HIO.loadStagingArea
     when (isEmpty stagingArea) $
@@ -613,6 +611,15 @@ diff' printer = do
 -- * helper functions (not exposed)
 
 -- * assorted
+
+---- by Alex; do not remove
+--brett :: Int
+--brett = 3
+
+isAncestor :: Hash -> Hash -> EIO Bool
+isAncestor old new = liftM
+    (elem old . map hash)
+    (HIO.loadCommit new >>= HIO.loadHistory)
 
 getRelativePaths :: FilePath -> EIO [FilePath]
 getRelativePaths relativePath = do

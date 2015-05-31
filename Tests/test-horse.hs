@@ -1677,7 +1677,7 @@ testCheckoutBadTruncatedHash2 = do
     -- unlikely that this will be the actual hash
     eitherCheckoutResult <- runEitherT $ H.checkout "aaaaaaaa"
 
-    eitherCheckoutResult @?= Left "Fatal: ref \"aaaaaaaa\" does not match any branch names or stored hashes"
+    eitherCheckoutResult @?= Left "Fatal: ref aaaaaaaa does not match any branch names or stored hashes"
 
 -- always hashes to "aaaaaaaaa..." (40 'a's)
 mockHasher1 :: CommitHasher
@@ -2983,7 +2983,7 @@ testCherryPickInvalidRef = do
     let hash3 = hash $ fromRight (error "c") eitherCommit3
 
     eitherCommit <- runEitherT $ H.cherryPick "invalidref" def quietPrinter
-    eitherCommit @?= Left "Fatal: ref \"invalidref\" does not match any branch names or stored hashes"
+    eitherCommit @?= Left "Fatal: ref invalidref does not match any branch names or stored hashes"
 
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "newbranch" hash3 True, Branch "master" hash2 False]
@@ -3063,7 +3063,7 @@ testFastForwardOtherBranchDoesNotExist = do
     let hash1 = hash $ fromRight (error "a") eitherCommit1
 
     result <- runEitherT $ H.fastForward "nonexistent-branch"
-    result @?= Left "Fatal: isn't a branch name: nonexistent-branch"
+    result @?= Left "Fatal: ref nonexistent-branch does not match any branch names or stored hashes"
 
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= Right [Branch "master" hash1 True]
@@ -3072,10 +3072,15 @@ testFastForwardNoCommitsHaveBeenMade :: Assertion
 testFastForwardNoCommitsHaveBeenMade = do
     initRepo
 
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
     eitherBranchesBeforeFF <- runEitherT $ H.listBranches quietPrinter
 
     result <- runEitherT $ H.fastForward "some-branch"
-    result @?= Left "Fatal: isn't a branch name: some-branch"
+    result @?= Left "Fatal: ref some-branch does not match any branch names or stored hashes"
 
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     eitherBranches @?= eitherBranchesBeforeFF
@@ -3110,40 +3115,200 @@ testFastForward = do
     eitherBranches <- runEitherT $ H.listBranches quietPrinter
     sort <$> eitherBranches @?= sort <$> Right [Branch "ahead-branch" hash2 False, Branch "master" hash2 True]
 
+testFastForwardFromSubdir :: Assertion
+testFastForwardFromSubdir = do
+    initRepo
+
+    D.createDirectory "d"
+    D.setCurrentDirectory "d"
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    b <- runEitherT $ H.createBranch "ahead-branch" Nothing quietPrinter
+    runEitherT $ H.checkout "ahead-branch"
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    eitherBranches @?= Right [Branch "ahead-branch" hash2 True, Branch "master" hash1 False]
+
+    runEitherT $ H.checkout "master"
+    result <- runEitherT $ H.fastForward "ahead-branch"
+    assertBool "fast-forward should succeed" (isRight result)
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right [Branch "ahead-branch" hash2 False, Branch "master" hash2 True]
+
+    D.setCurrentDirectory ".."
+
+testFastForwardWithSelf :: Assertion
+testFastForwardWithSelf = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    result <- runEitherT $ H.fastForward "master"
+    assertBool "fast-forward should succeed" (isRight result)
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right [Branch "master" hash2 True]
+
+testFastForwardNoBranchIsCurrent :: Assertion
+testFastForwardNoBranchIsCurrent = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.checkout "HEAD^"
+
+    result <- runEitherT $ H.fastForward "master"
+    result @?= Left "Fatal: can't fast-forward when you don't have a branch checked out."
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right [Branch "master" hash2 False]
+
+testFastForwardWhenNotAncestor :: Assertion
+testFastForwardWhenNotAncestor = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    runEitherT $ H.createBranch "base" Nothing quietPrinter
+    runEitherT $ H.createBranch "left" Nothing quietPrinter
+    runEitherT $ H.checkout "left"
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    runEitherT $ H.checkout "base"
+    runEitherT $ H.createBranch "right" Nothing quietPrinter
+    runEitherT $ H.checkout "right"
+
+    D.removeFile "a" >> createFileWithContents "a" "3"
+    createFileWithContents "b" "3"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit3 <- runEitherT noargCommit
+    let hash3 = hash $ fromRight undefined eitherCommit3
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right
+        [ Branch "base" hash1 False
+        , Branch "master" hash1 False
+        , Branch "left" hash2 False
+        , Branch "right" hash3 True ]
+
+    result <- runEitherT $ H.fastForward "left"
+    result @?= Left "Fatal: can only fast-forward when HEAD is an ancestor of left"
+
+    eitherBranches2 <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches2 @?= sort <$> Right
+        [ Branch "base" hash1 False
+        , Branch "master" hash1 False
+        , Branch "left" hash2 False
+        , Branch "right" hash3 True ]
+
+testFastForwardWhenNotAncestor2 :: Assertion
+testFastForwardWhenNotAncestor2 = do
+    initRepo
+
+    createFileWithContents "a" "1"
+    runEitherT $ H.stage "a"
+    eitherCommit1 <- runEitherT noargCommit
+    let hash1 = hash $ fromRight (error "a") eitherCommit1
+
+    runEitherT $ H.createBranch "base" Nothing quietPrinter
+
+    D.removeFile "a" >> createFileWithContents "a" "2"
+    createFileWithContents "b" "2"
+
+    runEitherT $ H.stage "a"
+    runEitherT $ H.stage "b"
+    eitherCommit2 <- runEitherT noargCommit
+    let hash2 = hash $ fromRight undefined eitherCommit2
+
+    eitherBranches <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches @?= sort <$> Right
+        [ Branch "base" hash1 False
+        , Branch "master" hash2 True ]
+
+    result <- runEitherT $ H.fastForward "base"
+    result @?= Left "Fatal: can only fast-forward when HEAD is an ancestor of base"
+
+    eitherBranches2 <- runEitherT $ H.listBranches quietPrinter
+    sort <$> eitherBranches2 @?= sort <$> Right
+        [ Branch "base" hash1 False
+        , Branch "master" hash2 True ]
 
 fastForwardTests :: TestTree
 fastForwardTests = testGroup "fast-forward tests"
     [ testCase
-    --    "`fast-forward`"
-    --    (runTest testFastForward)
-    --, testCase
+        "`fast-forward`"
+        (runTest testFastForward)
+    , testCase
         "`fast-forward` run without a repository"
         (runTest testNoRepoFastForward)
-    --, testCase
-    --    "`fast-forward` from a subdirectory"
-    --    (runTest testFastForwardFromSubdir)
+    , testCase
+        "`fast-forward` from a subdirectory"
+        (runTest testFastForwardFromSubdir)
     , testCase
         "`fast-forward` when no commits have been made"
         (runTest testFastForwardNoCommitsHaveBeenMade)
-    --, testCase
-    --    "`fast-forward` with self"
-    --    (runTest testFastForwardWithSelf)
+    , testCase
+        "`fast-forward` with self"
+        (runTest testFastForwardWithSelf)
     , testCase
         "`fast-forward` when the other branch dosen't exist"
         (runTest testFastForwardOtherBranchDoesNotExist)
-    --, testCase
-    --    "`fast-forward` with conflicts"
-    --    (runTest testFastForwardWithConflicts)
-    --, testCase
-    --    "`fast-forward` when not an ancestor of the other branch"
-    --    (runTest testFastForwardWhenNotAncestor)
-    --, testCase
-    --    "`fast-forward` when no branch is current"
-    --    (runTest testFastForward)
-    --, testCase
-    --    "`fast-forward`"
-    --    (runTest testFastForward)
-    ]
+    , testCase
+        "`fast-forward` when not an ancestor of the other branch"
+        (runTest testFastForwardWhenNotAncestor)
+    , testCase
+        "`fast-forward` when not an ancestor of the other branch (case 2)"
+        (runTest testFastForwardWhenNotAncestor2)
+    , testCase
+        "`fast-forward` when no branch is current"
+        (runTest testFastForwardNoBranchIsCurrent) ]
 
 allCommandTests :: TestTree
 allCommandTests = testGroup "unit tests (Horse.Commands)"

@@ -12,6 +12,7 @@ Code
     * writerT?
     * more multithreading?
     * in runTest, catch Assertion exceptions?
+    * DI
 
 UX
     * more performance?

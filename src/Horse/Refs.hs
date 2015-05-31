@@ -84,7 +84,7 @@ refToHash unparsedRef = do
             let matching = matchingHashes ++ map branchHash matchingBranches
 
             case length matching of
-                0 -> left $ "Fatal: ref " ++ Prelude.show baseRef ++ " does not match any branch names or stored hashes"
+                0 -> left $ "Fatal: ref " ++ baseRef ++ " does not match any branch names or stored hashes"
                 1 -> right $ head matching
                 _ -> left $ "Fatal: multiple hashes or branch names match specified ref: " ++ Prelude.show matching
 
